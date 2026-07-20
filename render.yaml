@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: wildcard-server
+    env: docker
+    dockerfilePath: ./packages/server/Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: "3001"
+      - key: TURN_TIMEOUT_MS
+        value: "30000"
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: wildcard-redis
+          property: connectionString
+
+  - type: redis
+    name: wildcard-redis
+    plan: free
+    ipAllowList: []

@@ -95,12 +95,15 @@ export function drawFromPile(
  * If it's a Wild / Wild Draw Four, reshuffles it back in and flips again.
  */
 export function setupDeck(
-  playerCount: number,
+  playerCountOrIds: number | string[],
 ): { hands: Record<string, Card[]>; drawPile: Card[]; discardPile: Card[] } {
   let deck = shuffle(buildDeck());
 
   // Deal 7 cards to each player
-  const playerIds = Array.from({ length: playerCount }, (_, i) => String(i));
+  const playerIds: string[] =
+    typeof playerCountOrIds === "number"
+      ? Array.from({ length: playerCountOrIds }, (_, i) => String(i))
+      : playerCountOrIds;
   const hands: Record<string, Card[]> = {};
 
   for (const pid of playerIds) {
