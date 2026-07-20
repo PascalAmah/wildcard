@@ -85,31 +85,41 @@ describe("GameEngine", () => {
       const players = makePlayers(2);
       const engine = new GameEngine("room1", players);
       const state = engine.getState();
-      const hand = state.hands["0"];
-      const topCard = state.discardPile[state.discardPile.length - 1];
 
-      // Find a legal non-wild card, or use a wild with chosenColor
-      const nonWild = hand.find(
-        (c) =>
-          canPlay(c, topCard, state.activeColor) &&
-          c.type !== "WILD" &&
-          c.type !== "WILD_DRAW_FOUR",
-      );
-
-      let legalCard = nonWild;
+      // Draw cards until player "0" has a legal move
+      let cardId: string | undefined;
       let chosenColor: string | undefined;
+      for (let i = 0; i < 10; i++) {
+        const hand = state.hands["0"];
+        const topCard = state.discardPile[state.discardPile.length - 1];
 
-      if (!legalCard) {
+        const nonWild = hand.find(
+          (c) =>
+            canPlay(c, topCard, state.activeColor) &&
+            c.type !== "WILD" &&
+            c.type !== "WILD_DRAW_FOUR",
+        );
+
+        if (nonWild) {
+          cardId = nonWild.id;
+          break;
+        }
+
         const wildCard = hand.find(
           (c) => c.type === "WILD" || c.type === "WILD_DRAW_FOUR",
         );
-        expect(wildCard).toBeDefined();
-        legalCard = wildCard!;
-        chosenColor = "red";
+        if (wildCard) {
+          cardId = wildCard.id;
+          chosenColor = "red";
+          break;
+        }
+
+        // No legal move — draw a card (as if it's player 0's turn)
+        engine.drawCard("0");
       }
 
-      const cardId = legalCard!.id;
-      engine.playCard("0", cardId, chosenColor as any);
+      expect(cardId).toBeDefined();
+      engine.playCard("0", cardId!, chosenColor as any);
 
       const newState = engine.getState();
       expect(
@@ -157,7 +167,9 @@ describe("GameEngine", () => {
       const topCard = state.discardPile[state.discardPile.length - 1];
 
       if (canPlay(drawn, topCard, state.activeColor)) {
-        engine.playCard("0", drawn.id);
+        const isWild =
+          drawn.type === "WILD" || drawn.type === "WILD_DRAW_FOUR";
+        engine.playCard("0", drawn.id, isWild ? "red" : undefined);
         const newState = engine.getState();
         expect(newState.currentPlayerIndex).toBe(1);
         expect(

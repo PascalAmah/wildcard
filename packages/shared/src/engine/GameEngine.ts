@@ -24,7 +24,8 @@ export class GameEngine {
     theme: "midnight" | "neon" | "sunset" | "forest" = "midnight",
     maxPlayers: number = 4,
   ) {
-    const { hands, drawPile, discardPile } = setupDeck(players.length);
+    const playerIds = players.map((p) => p.id);
+    const { hands, drawPile, discardPile } = setupDeck(playerIds);
 
     this.state = {
       roomId,
