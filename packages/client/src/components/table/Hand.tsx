@@ -1,12 +1,11 @@
-import { useRef, useCallback, useLayoutEffect, useMemo } from "react";
+import { useRef, useCallback, useLayoutEffect, useMemo, useEffect } from "react";
 import gsap from "gsap";
 import { Flip } from "gsap/Flip";
 import { canPlay } from "@wildcard/shared";
 import type { Card, CardColor } from "@wildcard/shared";
 import { hapticPlay, hapticInvalid } from "../../hooks/useHaptics";
-import { easeOut, flightDuration, reducedMotionMQ, isReducedMotion } from "../../lib/gsapConfig";
+import { easeOut, flightDuration, isReducedMotion } from "../../lib/gsapConfig";
 import type { ToastMessage } from "../shared/Toast";
-import type { DiscardPileHandle } from "./DiscardPile";
 
 // ---------- helpers ----------
 
@@ -124,39 +123,35 @@ export default function Hand({
   // ---- Apply Flip reflow + new-card entrance AFTER React commit ----
   useLayoutEffect(() => {
     if (!handRef.current) return;
+    if (isReducedMotion()) return;
+
     const state = flipStateRef.current;
     flipStateRef.current = null;
 
-    reducedMotionMQ.add("(prefers-reduced-motion: no-preference)", (ctx) => {
-      // Flip-reflow the remaining cards
-      if (state) {
-        Flip.from(state, {
-          duration: 0.35,
-          ease: easeOut,
-          absolute: true,
-          toggleClass: "flipping",
-        });
+    // Flip-reflow the remaining cards
+    if (state) {
+      Flip.from(state, {
+        duration: 0.35,
+        ease: easeOut,
+        absolute: true,
+        toggleClass: "flipping",
+      });
+    }
+
+    // Animate newly-arrived cards: rise-and-fade (port from mockup)
+    for (const id of newCardIds) {
+      const el = cardEls.current.get(id);
+      if (el) {
+        gsap.fromTo(
+          el,
+          { y: 20, opacity: 0 },
+          { y: 0, opacity: 1, duration: 0.3, ease: easeOut },
+        );
       }
+    }
+  }, [cardsKey]);
 
-      // Animate newly-arrived cards: rise-and-fade (port from mockup)
-      for (const id of newCardIds) {
-        const el = cardEls.current.get(id);
-        if (el) {
-          ctx.add(() => {
-            return gsap.fromTo(
-              el,
-              { y: 20, opacity: 0 },
-              { y: 0, opacity: 1, duration: 0.3, ease: easeOut },
-            ).kill;
-          });
-        }
-      }
-
-      return () => {
-        // Cleanup handled by GSAP context
-      };
-    });
-
+  useEffect(() => {
     prevCardIds.current = new Set(cards.map((c) => c.id));
   }, [cards]);
 
@@ -240,23 +235,19 @@ export default function Hand({
     if (!legal) {
       // Shake the card
       const el = shakeTargets.current.get(card.id);
-      if (el) {
-        reducedMotionMQ.add("(prefers-reduced-motion: no-preference)", (ctx) => {
-          ctx.add(() => {
-            return gsap.fromTo(
-              el,
-              { xPercent: 0 },
-              {
-                xPercent: 4,
-                duration: 0.06,
-                repeat: 5,
-                yoyo: true,
-                ease: "power1.inOut",
-                onComplete: () => gsap.set(el, { xPercent: 0 }),
-              },
-            ).kill;
-          });
-        });
+      if (el && !isReducedMotion()) {
+        gsap.fromTo(
+          el,
+          { xPercent: 0 },
+          {
+            xPercent: 4,
+            duration: 0.06,
+            repeat: 5,
+            yoyo: true,
+            ease: "power1.inOut",
+            onComplete: () => gsap.set(el, { xPercent: 0 }),
+          },
+        );
       }
 
       hapticInvalid();

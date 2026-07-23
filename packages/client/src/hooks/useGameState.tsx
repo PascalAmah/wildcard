@@ -3,10 +3,9 @@ import {
   useContext,
   useReducer,
   useEffect,
-  useCallback,
   type ReactNode,
 } from "react";
-import type { ClientView, RoomStatus, ArenaTheme } from "@wildcard/shared";
+import type { ClientView, ArenaTheme } from "@wildcard/shared";
 import { socket } from "../lib/socketClient";
 
 // ---------- Types ----------

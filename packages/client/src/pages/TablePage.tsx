@@ -6,7 +6,7 @@ import type { CardColor } from "@wildcard/shared";
 import { socket } from "../lib/socketClient";
 import { useGameState } from "../hooks/useGameState";
 import type { GameView } from "../hooks/useGameState";
-import { reducedMotionMQ } from "../lib/gsapConfig";
+import { isReducedMotion } from "../lib/gsapConfig";
 import DiscardPile from "../components/table/DiscardPile";
 import type { DiscardPileHandle } from "../components/table/DiscardPile";
 import DrawPile from "../components/table/DrawPile";
@@ -203,30 +203,36 @@ export default function TablePage() {
   useGSAP(
     () => {
       if (!tableRef.current) return;
-      reducedMotionMQ.add("(prefers-reduced-motion: no-preference)", (ctx) => {
-        ctx.add(() => {
-          return gsap
-            .from(tableRef.current!.children, {
-              y: 30,
-              opacity: 0,
-              duration: 0.4,
-              stagger: 0.06,
-              ease: "power2.out",
-            })
-            .kill;
-        });
+
+      // Respect OS reduced-motion preference — skip animation entirely
+      if (isReducedMotion()) return;
+
+      const tl = gsap.from(tableRef.current.children, {
+        y: 30,
+        opacity: 0,
+        duration: 0.4,
+        stagger: 0.06,
+        ease: "power2.out",
       });
+
+      // Return the kill function so useGSAP calls it on cleanup/deps change
+      return () => tl.kill();
     },
     { scope: tableRef, dependencies: [!!view] },
   );
 
   // ----- Screen-based redirects -----
   useEffect(() => {
-    if (state.screen === "roundOver") {
+    if (state.screen === "roundOver" && view) {
       const data = state as { screen: "roundOver"; winnerId: string; scores: Record<string, number>; handCounts: Record<string, number> };
       setTimeout(() => {
         navigate(`/table/${roomId}/results`, {
-          state: { winnerId: data.winnerId, scores: data.scores, handCounts: data.handCounts },
+          state: {
+            winnerId: data.winnerId,
+            scores: data.scores,
+            handCounts: data.handCounts,
+            players: view.players,
+          },
         });
       }, 2000);
     } else if (state.screen === "waiting" || state.screen === "lobby") {
@@ -236,14 +242,127 @@ export default function TablePage() {
     }
   }, [state.screen, roomId, navigate]);
 
-  // ----- Loading state -----
-  if (!view) {
+  // ----- Loading state with determinate progress -----
+  // Always show the loader for at least LOAD_MIN_MS, even if the game state
+  // is already available. This gives a smooth transition instead of a flash.
+  const [showLoader, setShowLoader] = useState(true);
+  const [loadProgress, setLoadProgress] = useState(0);
+  const loadStartedRef = useRef(0);
+  const LOAD_DURATION_MS = 2000; // bar fills 0→100% over 2 seconds
+  const LOAD_MIN_MS = 600;       // minimum display time even if view is ready
+
+  // Animate the progress bar from 0→100% over LOAD_DURATION_MS.
+  // Runs regardless of whether view is available — we always show the bar.
+  // The interval stays alive even past 100% so retries can reset the timer
+  // via loadStartedRef and restart the animation seamlessly.
+  useEffect(() => {
+    loadStartedRef.current = Date.now();
+    setLoadProgress(0);
+
+    const interval = setInterval(() => {
+      const elapsed = Date.now() - loadStartedRef.current;
+      const pct = Math.min(100, (elapsed / LOAD_DURATION_MS) * 100);
+      setLoadProgress(pct);
+    }, 30);
+
+    return () => clearInterval(interval);
+  }, [roomId]);
+
+  // Transition to the game view when both conditions are met:
+  //  - view is available (server sent game:state)
+  //  - minimum display time has elapsed
+  useEffect(() => {
+    if (!view || !showLoader) return;
+
+    const elapsed = Date.now() - loadStartedRef.current;
+    const remaining = Math.max(0, LOAD_MIN_MS - elapsed);
+
+    const timer = setTimeout(() => setShowLoader(false), remaining);
+    return () => clearTimeout(timer);
+  }, [view, showLoader]);
+
+  // Auto-retry: re-request state when the progress bar fills
+  useEffect(() => {
+    if (view || !roomId || !showLoader) return;
+
+    if (loadProgress < 100) return;
+
+    // Bar filled, no view yet — retry
+    const timer = setTimeout(() => {
+      socket.emit("room:requestState");
+      // Restart the bar for another cycle
+      loadStartedRef.current = Date.now();
+      setLoadProgress(0);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [loadProgress, view, roomId, showLoader]);
+
+  if (showLoader) {
+    const barPct = Math.round(loadProgress);
+
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-[var(--ink-dim)] text-[14px]">Loading game…</div>
+      <div
+        className="min-h-screen flex items-center justify-center"
+        style={{ background: "var(--bg)" }}
+      >
+        <div className="flex flex-col items-center gap-5">
+          {/* Logo */}
+          <div className="flex items-center gap-2.5 mb-2">
+            <div className="w-[14px] h-[14px] rounded-[4px] rotate-[8deg] bg-[conic-gradient(from_45deg,#34c77b,#f2b341,#ef5b68,#4c6ef5,#34c77b)]" />
+            <span
+              className="font-bold text-[20px]"
+              style={{ fontFamily: "'Fredoka', sans-serif" }}
+            >
+              Wildcard
+            </span>
+          </div>
+
+          {/* Determinate progress bar */}
+          <div
+            className="w-[200px] h-[3px] rounded-full overflow-hidden"
+            style={{ background: "var(--line)" }}
+          >
+            <div
+              className="h-full rounded-full transition-[width] duration-[60ms] ease-linear"
+              style={{
+                width: `${barPct}%`,
+                background:
+                  "linear-gradient(90deg, var(--accent) 0%, var(--green) 100%)",
+              }}
+            />
+          </div>
+
+          {/* Label */}
+          <p className="text-[13px] text-[var(--ink-dim)]">
+            {barPct < 100
+              ? "Connecting to your table…"
+              : "Still trying…"}
+          </p>
+
+          {/* Manual retry (appears after bar fills) */}
+          <button
+            onClick={() => {
+              loadStartedRef.current = Date.now();
+              setLoadProgress(0);
+              socket.emit("room:requestState");
+            }}
+            className="text-[12px] text-[var(--ink-dim)] font-semibold cursor-pointer bg-transparent underline border-none"
+            style={{
+              opacity: barPct >= 100 ? 1 : 0,
+              transition: "opacity 0.3s ease",
+            }}
+          >
+            Taking too long? Tap to retry
+          </button>
+        </div>
       </div>
     );
   }
+
+  // Guard: if showLoader is false but view is still null (shouldn't happen),
+  // render nothing. This also narrows view's type for TypeScript.
+  if (!view) return null;
 
   const isMyTurn =
     view.currentPlayerIndex === view.players.findIndex((p) => p.id === myPlayerId);

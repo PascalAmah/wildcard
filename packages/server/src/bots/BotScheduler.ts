@@ -1,5 +1,4 @@
 import { chooseBotMove } from "@wildcard/shared";
-import type { GameState } from "@wildcard/shared";
 import type { Room } from "../rooms/Room.js";
 import { logger } from "../utils/logger.js";
 
