@@ -4,6 +4,7 @@ import { useSocket } from "./hooks/useSocket";
 import LandingPage from "./pages/LandingPage";
 import LobbyPage from "./pages/LobbyPage";
 import WaitingRoomPage from "./pages/WaitingRoomPage";
+import TablePage from "./pages/TablePage";
 import ConnectionLostOverlay from "./components/shared/ConnectionLostOverlay";
 import "./styles/themes.css";
 
@@ -17,6 +18,7 @@ function AppShell() {
         <Route path="/lobby" element={<LobbyPage />} />
         <Route path="/table/:roomId/waiting" element={<WaitingRoomPage />} />
         <Route path="/join/:roomCode" element={<LobbyPage />} />
+                <Route path="/table/:roomId" element={<TablePage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
 
