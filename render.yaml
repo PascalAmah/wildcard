@@ -1,10 +1,9 @@
 services:
   - type: web
     name: wildcard-server
-    env: docker
+    runtime: docker
     dockerfilePath: ./packages/server/Dockerfile
     dockerContext: .
-    plan: free
     healthCheckPath: /health
     envVars:
       - key: PORT
@@ -19,5 +18,4 @@ services:
 
   - type: redis
     name: wildcard-redis
-    plan: free
     ipAllowList: []

@@ -56,6 +56,13 @@ export class Room {
     return this.data.theme;
   }
 
+  /** Update the arena theme (host only, lobby only). */
+  setTheme(theme: RoomData["theme"]): void {
+    if (this.data.status !== "WAITING") return;
+    this.data.theme = theme;
+    this.persist();
+  }
+
   get currentPlayerId(): string | null {
     if (!this.engine) return null;
     const state = this.engine.getState();

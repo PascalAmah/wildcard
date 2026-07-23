@@ -177,8 +177,7 @@ export function registerRoomHandlers(
 
     if (data.playerId !== room.hostId) return;
 
-    // Theme is set at room creation time; we could store it on the room
-    // if we add a setTheme method. For now, no-op.
+    room.setTheme(payload.theme);
     broadcastLobbyState(io, room.roomId, room);
   });
 
@@ -211,6 +210,15 @@ export function registerRoomHandlers(
     // Don't remove the player immediately — they may reconnect
     // The 60s grace period is handled client-side.
     // If we wanted to auto-remove, we'd set a timer here.
+  });
+
+  socket.on("room:requestState", () => {
+    const data = socket.data as SocketData;
+    if (!data?.roomId) return;
+    const room = roomManager.getRoom(data.roomId);
+    if (!room) return;
+    // Send just this socket the current room state
+    broadcastLobbyState(io, room.roomId, room);
   });
 }
 
