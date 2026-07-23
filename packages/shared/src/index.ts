@@ -1,1 +1,10 @@
 export * from "./types.js";
+export * from "./deck.js";
+export { canPlay } from "./engine/canPlay.js";
+export { applyEffect, cardScore } from "./engine/applyEffect.js";
+export { getNextPlayerIndex, getSkippedPlayerIndex } from "./engine/turnOrder.js";
+export { EffectQueue } from "./engine/effectQueue.js";
+export { GameEngine } from "./engine/GameEngine.js";
+export type { RoundOverResult } from "./engine/GameEngine.js";
+export { chooseBotMove } from "./bots/chooseBotMove.js";
+export type { BotMove } from "./bots/chooseBotMove.js";
