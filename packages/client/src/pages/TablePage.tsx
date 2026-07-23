@@ -178,11 +178,7 @@ export default function TablePage() {
     socket.emit("game:drawCard", { roomId });
   }
 
-  function handlePassTurn() {
-    if (!roomId) return;
-    socket.emit("game:passTurn", { roomId });
-  }
-
+  // ---- Game actions ----
   // ----- Reconnect handlers -----
   function handleRetry() {
     socket.connect();
@@ -221,17 +217,24 @@ export default function TablePage() {
     { scope: tableRef, dependencies: [!!view] },
   );
 
+  // ----- Store last known game view for round-over navigation -----
+  // When screen transitions from "playing" to "roundOver", view becomes null,
+  // but we still need the players array to pass to the scoreboard.
+  const lastViewRef = useRef<typeof view>(null);
+  if (view) lastViewRef.current = view;
+
   // ----- Screen-based redirects -----
   useEffect(() => {
-    if (state.screen === "roundOver" && view) {
+    if (state.screen === "roundOver" && lastViewRef.current) {
       const data = state as { screen: "roundOver"; winnerId: string; scores: Record<string, number>; handCounts: Record<string, number> };
+      const players = lastViewRef.current.players;
       setTimeout(() => {
         navigate(`/table/${roomId}/results`, {
           state: {
             winnerId: data.winnerId,
             scores: data.scores,
             handCounts: data.handCounts,
-            players: view.players,
+            players,
           },
         });
       }, 2000);
@@ -242,68 +245,40 @@ export default function TablePage() {
     }
   }, [state.screen, roomId, navigate]);
 
-  // ----- Loading state with determinate progress -----
-  // Always show the loader for at least LOAD_MIN_MS, even if the game state
-  // is already available. This gives a smooth transition instead of a flash.
+  // ----- Loading state with CSS-driven progress bar -----
+  // The bar fills 0→100% over 2s via CSS animation (fillBar keyframe).
+  // We keep the loader visible for at least LOAD_MIN_MS for a smooth
+  // transition, then reveal the game once view is available.
   const [showLoader, setShowLoader] = useState(true);
-  const [loadProgress, setLoadProgress] = useState(0);
-  const loadStartedRef = useRef(0);
-  const LOAD_DURATION_MS = 2000; // bar fills 0→100% over 2 seconds
-  const LOAD_MIN_MS = 600;       // minimum display time even if view is ready
+  const [loaderKey, setLoaderKey] = useState(0);
+  const mountedAt = useRef(Date.now());
+  const LOAD_DURATION_MS = 2000;
+  const LOAD_MIN_MS = LOAD_DURATION_MS; // bar reaches 100% before game appears
 
-  // Animate the progress bar from 0→100% over LOAD_DURATION_MS.
-  // Runs regardless of whether view is available — we always show the bar.
-  // The interval stays alive even past 100% so retries can reset the timer
-  // via loadStartedRef and restart the animation seamlessly.
-  useEffect(() => {
-    loadStartedRef.current = Date.now();
-    setLoadProgress(0);
-
-    const interval = setInterval(() => {
-      const elapsed = Date.now() - loadStartedRef.current;
-      const pct = Math.min(100, (elapsed / LOAD_DURATION_MS) * 100);
-      setLoadProgress(pct);
-    }, 30);
-
-    return () => clearInterval(interval);
-  }, [roomId]);
-
-  // Transition to the game view when both conditions are met:
-  //  - view is available (server sent game:state)
-  //  - minimum display time has elapsed
+  // When view becomes available, wait for minimum display time then reveal
   useEffect(() => {
     if (!view || !showLoader) return;
-
-    const elapsed = Date.now() - loadStartedRef.current;
-    const remaining = Math.max(0, LOAD_MIN_MS - elapsed);
-
+    const remaining = Math.max(0, LOAD_MIN_MS - (Date.now() - mountedAt.current));
     const timer = setTimeout(() => setShowLoader(false), remaining);
     return () => clearTimeout(timer);
   }, [view, showLoader]);
 
-  // Auto-retry: re-request state when the progress bar fills
+  // Auto-retry after 2s if view still isn't available
   useEffect(() => {
     if (view || !roomId || !showLoader) return;
-
-    if (loadProgress < 100) return;
-
-    // Bar filled, no view yet — retry
     const timer = setTimeout(() => {
       socket.emit("room:requestState");
-      // Restart the bar for another cycle
-      loadStartedRef.current = Date.now();
-      setLoadProgress(0);
-    }, 300);
-
+      mountedAt.current = Date.now();
+      setLoaderKey((k) => k + 1);
+    }, LOAD_DURATION_MS + 400);
     return () => clearTimeout(timer);
-  }, [loadProgress, view, roomId, showLoader]);
+  }, [view, roomId, showLoader]);
 
   if (showLoader) {
-    const barPct = Math.round(loadProgress);
 
     return (
       <div
-        className="min-h-screen flex items-center justify-center"
+        className="h-full flex items-center justify-center"
         style={{ background: "var(--bg)" }}
       >
         <div className="flex flex-col items-center gap-5">
@@ -318,40 +293,38 @@ export default function TablePage() {
             </span>
           </div>
 
-          {/* Determinate progress bar */}
+          {/* Determinate progress bar — animated entirely via CSS */}
           <div
             className="w-[200px] h-[3px] rounded-full overflow-hidden"
             style={{ background: "var(--line)" }}
           >
             <div
-              className="h-full rounded-full transition-[width] duration-[60ms] ease-linear"
+              className="h-full rounded-full"
+              key={loaderKey}
               style={{
-                width: `${barPct}%`,
                 background:
                   "linear-gradient(90deg, var(--accent) 0%, var(--green) 100%)",
+                animation: "fillBar 2s ease-out forwards",
+                transformOrigin: "left center",
+                width: "100%",
+                transform: "scaleX(0)",
               }}
             />
           </div>
 
           {/* Label */}
           <p className="text-[13px] text-[var(--ink-dim)]">
-            {barPct < 100
-              ? "Connecting to your table…"
-              : "Still trying…"}
+            Connecting to your table…
           </p>
 
-          {/* Manual retry (appears after bar fills) */}
+          {/* Manual retry */}
           <button
             onClick={() => {
-              loadStartedRef.current = Date.now();
-              setLoadProgress(0);
+              mountedAt.current = Date.now();
+              setLoaderKey((k) => k + 1);
               socket.emit("room:requestState");
             }}
             className="text-[12px] text-[var(--ink-dim)] font-semibold cursor-pointer bg-transparent underline border-none"
-            style={{
-              opacity: barPct >= 100 ? 1 : 0,
-              transition: "opacity 0.3s ease",
-            }}
           >
             Taking too long? Tap to retry
           </button>
@@ -372,7 +345,7 @@ export default function TablePage() {
   return (
     <div
       ref={tableRef}
-      className="min-h-screen flex flex-col items-center justify-between p-4 pb-8 relative overflow-hidden"
+      className="h-full flex flex-col items-center justify-between p-4 pb-8 relative overflow-hidden"
       style={{ background: "var(--bg)" }}
     >
       {/* Background glow */}
@@ -400,17 +373,8 @@ export default function TablePage() {
         />
       </div>
 
-      {/* Pass button + turn info */}
+      {/* Turn info */}
       <div className="relative z-10 flex flex-col items-center gap-3">
-        {isMyTurn && (
-          <button
-            onClick={handlePassTurn}
-            className="px-6 py-2.5 rounded-xl text-[13px] font-bold cursor-pointer bg-[var(--panel-2)] text-[var(--ink)] border border-[var(--line)] hover:bg-[var(--line)] transition-colors duration-200"
-          >
-            Pass turn
-          </button>
-        )}
-
         <div className="text-[12px] font-semibold text-[var(--ink-dim)]">
           {isMyTurn
             ? "Your turn"
@@ -423,7 +387,7 @@ export default function TablePage() {
       </div>
 
       {/* Player's hand */}
-      <div className="relative z-10 w-full max-w-[700px]">
+      <div className="relative z-10 w-full max-w-full px-2">
         <Hand
           cards={view.myHand}
           onPlayCard={handlePlayCard}

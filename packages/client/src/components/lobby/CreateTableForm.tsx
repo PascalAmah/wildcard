@@ -90,7 +90,7 @@ export default function CreateTableForm({ onCreated }: CreateTableFormProps) {
         onChange={(e) => setHostName(e.target.value)}
         placeholder="e.g. Dre"
         maxLength={16}
-        className="w-full bg-[var(--bg)] border border-[var(--line)] rounded-xl p-[14px_16px] text-[15px] text-[var(--ink)] mb-[18px] outline-none focus:border-[#4c6ef5] placeholder:text-[#5a5c6b]"
+        className="w-full bg-[var(--bg)] border border-[var(--line)] rounded-xl p-[14px_16px] text-[16px] text-[var(--ink)] mb-[18px] outline-none focus:border-[#4c6ef5] placeholder:text-[#5a5c6b]"
       />
 
       {/* Max players stepper */}

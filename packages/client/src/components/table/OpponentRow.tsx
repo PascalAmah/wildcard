@@ -32,7 +32,8 @@ export default function OpponentRow({
   }
 
   return (
-    <div className="flex items-center justify-center gap-6">
+    <div className="overflow-x-auto pb-2 -mx-4 px-4 scrollbar-none">
+      <div className="flex items-center justify-center gap-4 min-w-min" style={{ gap: opponents.length > 4 ? '0.5rem' : '1.5rem' }}>
       {opponents.map((player) => {
         const isActive = player.id === currentPlayerId;
         return (
@@ -103,6 +104,7 @@ export default function OpponentRow({
           </div>
         );
       })}
+      </div>
     </div>
   );
 }

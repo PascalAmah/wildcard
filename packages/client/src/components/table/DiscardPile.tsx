@@ -95,9 +95,9 @@ const DiscardPile = forwardRef<DiscardPileHandle, DiscardPileProps>(
           ref={cardRef}
           className="relative w-full h-full rounded-xl border-2 flex flex-col items-center justify-center select-none"
           style={{
-            borderColor: isWild ? "rgba(255,255,255,0.4)" : "var(--card-border)",
+            borderColor: isWild ? colorHex[activeColor].light : "var(--card-border)",
             background: isWild
-              ? "linear-gradient(135deg, #2b2f42, #33384f)"
+              ? `linear-gradient(160deg, ${colorHex[activeColor].light}, ${colorHex[activeColor].dark})`
               : cardGradient(topCard),
           }}
         >

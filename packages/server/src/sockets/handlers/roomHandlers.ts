@@ -263,8 +263,10 @@ export function registerRoomHandlers(
     if (room.status === "WAITING") {
       broadcastLobbyState(io, room.roomId, room);
     } else {
-      // Game is in progress or round is over — send game state to this player
+      // Game is in progress or round is over — send both game state
+      // (for the table view) and lobby state (for host/player info)
       room.sendGameStateToPlayer(data.playerId);
+      broadcastLobbyState(io, room.roomId, room);
     }
   });
 }

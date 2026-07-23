@@ -80,19 +80,8 @@ export class BotScheduler {
           `Bot ${playerId} played ${botMove.cardId} in room ${room.roomId}`,
         );
       } else {
-        // Draw card — bot has no playable card
+        // No playable card — draw and auto-pass (drawCard now auto-advances)
         room.drawCard(playerId);
-
-        // After drawing, check if the drawn card is playable
-        const updatedState = room.getEngineState();
-        if (updatedState) {
-          const newMove = chooseBotMove(updatedState, playerId);
-          if (newMove.type === "PLAY_CARD" && newMove.cardId) {
-            room.playCard(playerId, newMove.cardId, newMove.chosenColor);
-          } else {
-            room.passTurn(playerId);
-          }
-        }
         logger.info(`Bot ${playerId} drew in room ${room.roomId}`);
       }
     } catch (err) {

@@ -284,8 +284,14 @@ export default function Hand({
   return (
     <div
       ref={handRef}
-      className="flex items-end justify-center gap-[-16px] px-4"
-      style={{ perspective: "1000px" }}
+      className="overflow-x-auto overflow-y-visible scrollbar-none py-3"
+    >
+      <div
+        className="flex items-end mx-auto w-fit"
+        style={{
+          perspective: "1000px",
+          gap: total > 10 ? "-28px" : total > 7 ? "-22px" : "-16px",
+      }}
     >
       {cards.map((card, idx) => {
         const isWild = isWildCard(card);
@@ -297,7 +303,7 @@ export default function Hand({
             key={card.id}
             ref={(el) => registerCard(card.id, el)}
             data-card-id={card.id}
-            className={`hcard relative flex-shrink-0 w-[84px] h-[122px] rounded-xl border-2 flex flex-col items-center justify-center select-none transition-shadow duration-150 ${
+            className={`hcard relative flex-shrink-0 w-[68px] h-[100px] sm:w-[84px] sm:h-[122px] rounded-xl border-2 flex flex-col items-center justify-center select-none transition-shadow duration-150 ${
               isClickable
                 ? "cursor-pointer hover:shadow-[0_0_16px_rgba(255,255,255,0.2)] hover:-translate-y-3"
                 : "cursor-default"
@@ -332,6 +338,7 @@ export default function Hand({
           </div>
         );
       })}
+      </div>
     </div>
   );
 }

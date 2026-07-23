@@ -71,7 +71,7 @@ export default function ScoreboardPage() {
     socket.emit("room:requestState");
 
     function onRoomState(data: { hostId: string }) {
-      setIsHost(data.hostId === socket.id);
+      setIsHost(data.hostId === socket.id || data.hostId === getStoredPlayerId());
     }
 
     socket.on("room:state", onRoomState);
@@ -138,7 +138,7 @@ export default function ScoreboardPage() {
 
   return (
     <div
-      className="min-h-screen flex items-center justify-center p-6"
+      className="h-full overflow-auto flex items-center justify-center p-6"
       style={{
         background:
           "radial-gradient(1000px 600px at 50% -6%, rgba(52,199,123,0.16) 0%, transparent 60%), var(--bg)",

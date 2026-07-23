@@ -249,11 +249,16 @@ export class Room {
     }
 
     this.engine.drawCard(playerId);
-    this.hasDrawnThisTurn = true;
+    this.hasDrawnThisTurn = false;
     this.persist();
     this.broadcastGameState();
 
-    // Don't advance turn — caller must follow up with playCard or passTurn
+    // Auto-pass: after drawing, the turn always ends so the next player
+    // can go. This keeps the game fast and fair — no stalling after a draw.
+    this.engine.passTurn(playerId);
+    this.persist();
+    this.broadcastGameState();
+    this.scheduleTurn();
   }
 
   passTurn(playerId: string): void {
