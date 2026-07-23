@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { socket } from "../../lib/socketClient";
+import { socket, persistRoomCode, persistPlayerId } from "../../lib/socketClient";
 import type { ArenaTheme } from "@wildcard/shared";
 import Button from "../shared/Button";
 
@@ -42,6 +42,11 @@ export default function CreateTableForm({ onCreated }: CreateTableFormProps) {
       error?: string;
     }) => {
       if (res.success && res.roomId) {
+        persistRoomCode(res.roomId);
+        // Store the player ID for reconnection
+        if (socket.id) {
+          persistPlayerId(socket.id);
+        }
         onCreated(res.roomId, {
           players: res.players ?? [{
             id: socket.id ?? "",

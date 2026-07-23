@@ -28,6 +28,15 @@ export default function LobbyPage() {
     [navigate],
   );
 
+  // Solo vs computer: the room is auto-created, bots added, and game started
+  // before this callback fires. Navigate straight to the table, not the waiting room.
+  const handleSoloStarted = useCallback(
+    (roomId: string) => {
+      navigate(`/table/${roomId}`);
+    },
+    [navigate],
+  );
+
   return (
     <div className="min-h-screen flex items-center justify-center p-6">
       <div className="w-full max-w-[920px]">
@@ -41,7 +50,7 @@ export default function LobbyPage() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
           <CreateTableForm onCreated={handleCreated} />
           <JoinTableForm onJoined={handleJoined} />
-          <SoloVsComputerForm onCreated={handleCreated} />
+          <SoloVsComputerForm onGameStarted={handleSoloStarted} />
         </div>
       </div>
     </div>

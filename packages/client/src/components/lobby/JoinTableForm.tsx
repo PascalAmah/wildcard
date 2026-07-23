@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { socket } from "../../lib/socketClient";
+import { socket, persistRoomCode, persistPlayerId } from "../../lib/socketClient";
 import Button from "../shared/Button";
 import type { ErrorCode } from "@wildcard/shared";
 
@@ -52,6 +52,10 @@ export default function JoinTableForm({ onJoined }: JoinTableFormProps) {
       error?: string;
     }) => {
       if (res.success && res.roomId) {
+        persistRoomCode(res.roomId);
+        if (socket.id) {
+          persistPlayerId(socket.id);
+        }
         onJoined(res.roomId, {
           players: res.players ?? [],
           hostId: "",

@@ -1,5 +1,6 @@
 import { useRef } from "react";
 import gsap from "gsap";
+import { isReducedMotion } from "../../lib/gsapConfig";
 
 interface DrawPileProps {
   drawPileCount: number;
@@ -13,8 +14,8 @@ export default function DrawPile({ drawPileCount, onDraw, canDraw }: DrawPilePro
   function handleClick() {
     if (!canDraw) return;
 
-    // Brief scale-down tween on press
-    if (cardRef.current) {
+    // Brief scale-down tween on press (skip if reduced-motion)
+    if (cardRef.current && !isReducedMotion()) {
       gsap.fromTo(
         cardRef.current,
         { scale: 1 },
@@ -70,13 +71,7 @@ export default function DrawPile({ drawPileCount, onDraw, canDraw }: DrawPilePro
           background: "linear-gradient(135deg, #2b2f42, #33384f)",
         }}
       >
-        {/* Decorative diamond pattern */}
-        <svg
-          width="32"
-          height="32"
-          viewBox="0 0 32 32"
-          className="opacity-30"
-        >
+        <svg width="32" height="32" viewBox="0 0 32 32" className="opacity-30">
           <polygon
             points="16,4 28,16 16,28 4,16"
             fill="none"

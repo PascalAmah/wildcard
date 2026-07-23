@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { socket } from "../lib/socketClient";
 import type { ArenaTheme } from "@wildcard/shared";
@@ -28,9 +28,11 @@ export default function WaitingRoomPage() {
     (location.state as { roomState?: RoomState })?.roomState ?? null,
   );
   const [copied, setCopied] = useState(false);
+  const navigatedRef = useRef(false);
 
   useEffect(() => {
     if (!roomId) return;
+    navigatedRef.current = false;
 
     function onRoomState(data: {
       players: Player[];
@@ -38,10 +40,14 @@ export default function WaitingRoomPage() {
       maxPlayers: number;
       theme: ArenaTheme;
     }) {
-      setRoomState(data);
+      if (!navigatedRef.current) {
+        setRoomState(data);
+      }
     }
 
     function onGameState() {
+      if (navigatedRef.current) return;
+      navigatedRef.current = true;
       navigate(`/table/${roomId}`);
     }
 

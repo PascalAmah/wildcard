@@ -118,6 +118,39 @@ export function registerGameHandlers(
       ack?.({ success: false, code, error: msg });
     }
   });
+
+  socket.on("game:playWithout", (payload, ack) => {
+    const data = socket.data as SocketData;
+    if (!data?.roomId) {
+      ack?.({ success: false, code: "NOT_IN_ROOM" });
+      return;
+    }
+
+    const room = roomManager.getRoom(data.roomId);
+    if (!room) {
+      ack?.({ success: false, code: "ROOM_NOT_FOUND" });
+      return;
+    }
+
+    try {
+      room.playWithout(payload.playerId);
+
+      emitGameEvent(io, room.roomId, {
+        type: "PLAY_WITHOUT",
+        actorId: data.playerId,
+        message: `A player was removed from the game`,
+      });
+
+      // Notify the room that the disconnected player was removed
+      io.to(room.roomId).emit("player:reconnected", { playerId: payload.playerId });
+
+      ack?.({ success: true });
+    } catch (err) {
+      const msg = (err as Error).message;
+      emitToPlayer(io, room.roomId, data.playerId, "error", { code: "ERROR", message: msg });
+      ack?.({ success: false, error: msg });
+    }
+  });
 }
 
 function emitGameEvent(

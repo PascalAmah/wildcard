@@ -1,16 +1,13 @@
 import { useRef, useEffect } from "react";
 import gsap from "gsap";
+import { reducedMotionMQ, isReducedMotion } from "../../lib/gsapConfig";
 import type { CardColor } from "@wildcard/shared";
 
 interface WildColorPickerProps {
   onChooseColor: (color: CardColor) => void;
 }
 
-const COLORS: Array<{
-  color: CardColor;
-  hex: string;
-  hexDark: string;
-}> = [
+const COLORS: Array<{ color: CardColor; hex: string; hexDark: string }> = [
   { color: "green", hex: "#34c77b", hexDark: "#229a5f" },
   { color: "red", hex: "#ef5b68", hexDark: "#cf3b48" },
   { color: "yellow", hex: "#f2b341", hexDark: "#d5940f" },
@@ -22,25 +19,36 @@ export default function WildColorPicker({ onChooseColor }: WildColorPickerProps)
   const modalRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const tl = gsap.timeline();
+    if (isReducedMotion()) return;
 
-    // Scrim fade-in
-    tl.fromTo(
-      scrimRef.current,
-      { opacity: 0 },
-      { opacity: 1, duration: 0.2, ease: "power2.out" },
-    );
+    reducedMotionMQ.add("(prefers-reduced-motion: no-preference)", (ctx) => {
+      const tl = gsap.timeline();
 
-    // Modal scale-in
-    tl.fromTo(
-      modalRef.current,
-      { scale: 0.8, opacity: 0 },
-      { scale: 1, opacity: 1, duration: 0.25, ease: "back.out(1.7)" },
-      "-=0.1",
-    );
+      tl.fromTo(
+        scrimRef.current,
+        { opacity: 0 },
+        { opacity: 1, duration: 0.2, ease: "power2.out" },
+      );
+
+      tl.fromTo(
+        modalRef.current,
+        { scale: 0.8, opacity: 0 },
+        { scale: 1, opacity: 1, duration: 0.25, ease: "back.out(1.7)" },
+        "-=0.1",
+      );
+
+      return () => {
+        tl.kill();
+      };
+    });
   }, []);
 
   function handleChoose(color: CardColor) {
+    if (isReducedMotion()) {
+      onChooseColor(color);
+      return;
+    }
+
     // Quick exit animation
     const tl = gsap.timeline({
       onComplete: () => onChooseColor(color),

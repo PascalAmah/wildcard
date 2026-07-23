@@ -1,21 +1,15 @@
 import { useState } from "react";
-import { socket } from "../../lib/socketClient";
+import { socket, persistRoomCode, persistPlayerId } from "../../lib/socketClient";
 import Button from "../shared/Button";
 
 const BOT_COLORS = ["#34c77b", "#f2b341", "#ef5b68", "#4c6ef5", "#9a9caa"];
 
-type PlayerData = { id: string; name: string; isBot: boolean; isReady: boolean };
-
 interface SoloVsComputerFormProps {
-  onCreated: (roomId: string, roomState?: {
-    players: PlayerData[];
-    hostId: string;
-    maxPlayers: number;
-    theme: string;
-  }) => void;
+  /** Called after the room is created, bots added, and game auto-started. */
+  onGameStarted: (roomId: string) => void;
 }
 
-export default function SoloVsComputerForm({ onCreated }: SoloVsComputerFormProps) {
+export default function SoloVsComputerForm({ onGameStarted }: SoloVsComputerFormProps) {
   const [botCount, setBotCount] = useState(3);
   const [starting, setStarting] = useState(false);
 
@@ -34,6 +28,10 @@ export default function SoloVsComputerForm({ onCreated }: SoloVsComputerFormProp
         }
 
         const roomId = createRes.roomId;
+        persistRoomCode(roomId);
+        if (socket.id) {
+          persistPlayerId(socket.id);
+        }
 
         // Step 2: Add bots one by one
         const botNames = Array.from(
@@ -52,7 +50,7 @@ export default function SoloVsComputerForm({ onCreated }: SoloVsComputerFormProp
                 // Step 3: Auto-start the game
                 socket.emit("room:start", {}, (startRes: { success: boolean }) => {
                   if (startRes.success) {
-                    onCreated(roomId);
+                    onGameStarted(roomId);
                   } else {
                     setStarting(false);
                   }
@@ -68,12 +66,12 @@ export default function SoloVsComputerForm({ onCreated }: SoloVsComputerFormProp
   return (
     <div className="bg-[var(--panel)] border border-[var(--line)] rounded-2xl p-[30px_26px] flex flex-col">
       <div className="inline-flex items-center gap-1.5 text-[11.5px] font-bold text-[#34c77b] bg-[rgba(52,199,123,0.12)] border border-[rgba(52,199,123,0.3)] px-2.5 py-1 rounded-full uppercase tracking-[0.04em] mb-3.5 w-fit">
-        ⚡ Instant · no waiting room
+        Instant - no waiting room
       </div>
 
       <h2 className="font-[Fredoka] font-semibold text-[22px] mb-2">Play vs computer</h2>
       <p className="text-[14px] text-[var(--ink-dim)] leading-relaxed mb-[26px]">
-        Just want to try the game? Jump straight in against bots — no code, no waiting on anyone.
+        Just want to try the game? Jump straight in against bots, no code or waiting needed.
       </p>
 
       <label className="text-[12.5px] font-bold text-[var(--ink-dim)] uppercase tracking-[0.05em] mb-2 block">
@@ -105,7 +103,7 @@ export default function SoloVsComputerForm({ onCreated }: SoloVsComputerFormProp
           onClick={() => setBotCount((b) => Math.max(1, b - 1))}
           className="w-[28px] h-[28px] rounded-lg border border-[var(--line)] bg-[var(--panel-2)] text-[var(--ink)] text-base font-bold flex items-center justify-center cursor-pointer hover:border-[#4c6ef5] transition-colors duration-200"
         >
-          −
+          -
         </button>
         <div className="font-[Fredoka] font-semibold text-[18px] w-[24px] text-center">
           {botCount}
@@ -126,7 +124,7 @@ export default function SoloVsComputerForm({ onCreated }: SoloVsComputerFormProp
         onClick={handleStartSolo}
         className="mt-auto"
       >
-        {starting ? "Dealing you in…" : "Play now →"}
+        {starting ? "Dealing you in..." : "Play now"}
       </Button>
     </div>
   );

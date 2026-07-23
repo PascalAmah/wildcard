@@ -13,9 +13,21 @@
 body {
   font-family: "Manrope", sans-serif;
   min-height: 100vh;
+  min-height: 100dvh; /* dynamic viewport height — avoids iOS Safari chrome overlap */
   background: var(--bg);
   color: var(--ink);
   transition: background 0.5s ease;
+  /* Safe-area insets for notched/iOS devices */
+  padding-top: env(safe-area-inset-top);
+  padding-right: env(safe-area-inset-right);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+}
+
+/* Ensure any full-screen overlay uses safe-area too */
+.fixed.inset-0 {
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
 /* Pulse ring animation for connection-lost overlay */
