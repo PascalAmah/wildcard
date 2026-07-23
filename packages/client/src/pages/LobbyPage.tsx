@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import CreateTableForm from "../components/lobby/CreateTableForm";
 import JoinTableForm from "../components/lobby/JoinTableForm";
