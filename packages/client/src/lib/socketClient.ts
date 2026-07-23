@@ -42,8 +42,12 @@ export function getStoredRoomCode(): string | null {
  * Store the original player ID assigned by the server on room join,
  * so we can re-use it after a socket reconnection to rejoin the room.
  */
-export function persistPlayerId(playerId: string): void {
-  sessionStorage.setItem("wildcard_player_id", playerId);
+export function persistPlayerId(playerId: string | null | undefined): void {
+  if (playerId) {
+    sessionStorage.setItem("wildcard_player_id", playerId);
+  } else {
+    sessionStorage.removeItem("wildcard_player_id");
+  }
 }
 
 export function getStoredPlayerId(): string | null {

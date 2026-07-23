@@ -27,6 +27,15 @@ function AppShell() {
     }
 
     socket.on("connect", onConnect);
+
+    // Handle the case where the socket is already connected when this effect
+    // (re-)runs (e.g. after React Strict Mode cleanup/remount). If we don't
+    // call onConnect now, the room:rejoin is never emitted and the player
+    // ends up connected to the server but unknown to the room.
+    if (socket.connected) {
+      onConnect();
+    }
+
     return () => {
       socket.off("connect", onConnect);
     };

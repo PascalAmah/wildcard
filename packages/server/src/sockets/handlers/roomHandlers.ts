@@ -1,7 +1,7 @@
 import type { Server as SocketIOServer, Socket } from "socket.io";
 import type { RoomManager } from "../../rooms/RoomManager.js";
 import type { BotScheduler } from "../../bots/BotScheduler.js";
-import { emitToPlayer, type SocketData } from "../socketServer.js";
+import { type SocketData } from "../socketServer.js";
 import { logger } from "../../utils/logger.js";
 
 export function registerRoomHandlers(
@@ -259,8 +259,13 @@ export function registerRoomHandlers(
     if (!data?.roomId) return;
     const room = roomManager.getRoom(data.roomId);
     if (!room) return;
-    // Send just this socket the current room state
-    broadcastLobbyState(io, room.roomId, room);
+    // Send the appropriate state based on room status
+    if (room.status === "WAITING") {
+      broadcastLobbyState(io, room.roomId, room);
+    } else {
+      // Game is in progress or round is over — send game state to this player
+      room.sendGameStateToPlayer(data.playerId);
+    }
   });
 }
 

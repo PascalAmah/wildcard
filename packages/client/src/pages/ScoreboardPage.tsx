@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import confetti from "canvas-confetti";
-import { socket } from "../lib/socketClient";
+import { socket, persistRoomCode, persistPlayerId, getStoredPlayerId } from "../lib/socketClient";
+import { useGameState } from "../hooks/useGameState";
 
 interface ScoreboardEntry {
   playerId: string;
@@ -22,57 +23,62 @@ export default function ScoreboardPage() {
   const { roomId } = useParams<{ roomId: string }>();
   const navigate = useNavigate();
   const location = useLocation();
-  const state = location.state as { winnerId: string; scores: Record<string, number>; handCounts: Record<string, number> } | null;
+  const { dispatch } = useGameState();
+  const locationState = location.state as {
+    winnerId: string;
+    scores: Record<string, number>;
+    handCounts: Record<string, number>;
+    players: Array<{ id: string; name: string; isBot: boolean; handCount: number }>;
+  } | null;
   const [entries, setEntries] = useState<ScoreboardEntry[]>([]);
   const [isHost, setIsHost] = useState(false);
   const [rematching, setRematching] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const confettiFired = useRef(false);
 
+  // Build scoreboard entries immediately from the navigation state — no
+  // need to wait for a server round-trip. Player names are already in the
+  // ClientView passed from the TablePage.
+  useEffect(() => {
+    if (!locationState) return;
+
+    const sorted = locationState.players
+      .map((p) => {
+        const isWinner = p.id === locationState.winnerId;
+        return {
+          playerId: p.id,
+          name: p.name,
+          isYou: p.id === socket.id || p.id === getStoredPlayerId(),
+          cardsLeft: (locationState.handCounts?.[p.id]) ?? (isWinner ? 0 : 1),
+          score: locationState.scores[p.id] ?? 0,
+          isWinner,
+        };
+      })
+      .sort((a, b) => {
+        // Winner first, then by score descending
+        if (a.isWinner) return -1;
+        if (b.isWinner) return 1;
+        return b.score - a.score;
+      });
+
+    setEntries(sorted);
+  }, [locationState]);
+
+  // Determine if this player is the host (needs a server round-trip)
   useEffect(() => {
     if (!roomId) return;
 
-    // Request room state to determine host and player info
     socket.emit("room:requestState");
 
-    function onRoomState(data: {
-      players: Array<{ id: string; name: string; isBot: boolean; isReady: boolean }>;
-      hostId: string;
-      maxPlayers: number;
-      theme: string;
-    }) {
+    function onRoomState(data: { hostId: string }) {
       setIsHost(data.hostId === socket.id);
-
-      if (state) {
-        const sorted = data.players
-          .map((p) => {
-            const isWinner = p.id === state.winnerId;
-            return {
-              playerId: p.id,
-              name: p.name,
-              isYou: p.id === socket.id,
-              cardsLeft: (state.handCounts?.[p.id]) ?? (isWinner ? 0 : 1),
-              score: state.scores[p.id] ?? 0,
-              isWinner,
-            };
-          })
-          .sort((a, b) => {
-            // Winner first, then by score descending
-            if (a.isWinner) return -1;
-            if (b.isWinner) return 1;
-            return b.score - a.score;
-          });
-
-        setEntries(sorted);
-      }
     }
 
     socket.on("room:state", onRoomState);
-
     return () => {
       socket.off("room:state", onRoomState);
     };
-  }, [roomId, state]);
+  }, [roomId]);
 
   // Fire confetti on mount (once)
   useEffect(() => {
@@ -120,8 +126,13 @@ export default function ScoreboardPage() {
   const handleLeave = useCallback(() => {
     if (leaving) return;
     setLeaving(true);
+    // Clear stored room/player so the app doesn't try to rejoin on next visit
+    persistRoomCode(null);
+    persistPlayerId(null);
+    // Reset game state back to landing so the lobby doesn't auto-redirect
+    dispatch({ type: "GO_TO_LANDING" });
     navigate("/", { replace: true });
-  }, [navigate, leaving]);
+  }, [navigate, leaving, dispatch]);
 
   const winner = entries.find((e) => e.isWinner);
 

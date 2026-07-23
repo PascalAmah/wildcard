@@ -1,6 +1,6 @@
 import { forwardRef, useRef, useEffect, useImperativeHandle } from "react";
 import gsap from "gsap";
-import { reducedMotionMQ, isReducedMotion } from "../../lib/gsapConfig";
+import { isReducedMotion } from "../../lib/gsapConfig";
 import type { Card, CardColor } from "@wildcard/shared";
 
 // ---------- helpers ----------

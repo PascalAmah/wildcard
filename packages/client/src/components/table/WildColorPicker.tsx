@@ -1,6 +1,6 @@
 import { useRef, useEffect } from "react";
 import gsap from "gsap";
-import { reducedMotionMQ, isReducedMotion } from "../../lib/gsapConfig";
+import { isReducedMotion } from "../../lib/gsapConfig";
 import type { CardColor } from "@wildcard/shared";
 
 interface WildColorPickerProps {
@@ -21,26 +21,24 @@ export default function WildColorPicker({ onChooseColor }: WildColorPickerProps)
   useEffect(() => {
     if (isReducedMotion()) return;
 
-    reducedMotionMQ.add("(prefers-reduced-motion: no-preference)", (ctx) => {
-      const tl = gsap.timeline();
+    const tl = gsap.timeline();
 
-      tl.fromTo(
-        scrimRef.current,
-        { opacity: 0 },
-        { opacity: 1, duration: 0.2, ease: "power2.out" },
-      );
+    tl.fromTo(
+      scrimRef.current,
+      { opacity: 0 },
+      { opacity: 1, duration: 0.2, ease: "power2.out" },
+    );
 
-      tl.fromTo(
-        modalRef.current,
-        { scale: 0.8, opacity: 0 },
-        { scale: 1, opacity: 1, duration: 0.25, ease: "back.out(1.7)" },
-        "-=0.1",
-      );
+    tl.fromTo(
+      modalRef.current,
+      { scale: 0.8, opacity: 0 },
+      { scale: 1, opacity: 1, duration: 0.25, ease: "back.out(1.7)" },
+      "-=0.1",
+    );
 
-      return () => {
-        tl.kill();
-      };
-    });
+    return () => {
+      tl.kill();
+    };
   }, []);
 
   function handleChoose(color: CardColor) {

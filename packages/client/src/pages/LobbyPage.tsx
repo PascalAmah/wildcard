@@ -1,8 +1,9 @@
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import CreateTableForm from "../components/lobby/CreateTableForm";
 import JoinTableForm from "../components/lobby/JoinTableForm";
 import SoloVsComputerForm from "../components/lobby/SoloVsComputerForm";
+import { useGameState } from "../hooks/useGameState";
 
 interface RoomState {
   players: Array<{ id: string; name: string; isBot: boolean; isReady: boolean }>;
@@ -13,6 +14,34 @@ interface RoomState {
 
 export default function LobbyPage() {
   const navigate = useNavigate();
+  const { state } = useGameState();
+  const pendingSoloRoomRef = useRef<string | null>(null);
+  const navigatedRef = useRef(false);
+
+  // Navigate to the table when the server confirms game state for solo-vs-computer.
+  // We gate on the GameStateProvider receiving game:state rather than the socket
+  // ack callback, so navigation never races with the game state delivery.
+  useEffect(() => {
+    if (state.screen !== "playing" || navigatedRef.current) return;
+
+    // If the solo form set a pending room, use that
+    if (pendingSoloRoomRef.current) {
+      const roomId = pendingSoloRoomRef.current;
+      pendingSoloRoomRef.current = null;
+      navigatedRef.current = true;
+      navigate(`/table/${roomId}`);
+      return;
+    }
+
+    // Fallback: if game:state arrived but the solo callback never fired
+    // (e.g. socket disconnect during room:start ack), navigate to the
+    // table using the roomId embedded in the game view.
+    const playingState = state as { screen: "playing"; view: { roomId: string } };
+    if (playingState.view?.roomId) {
+      navigatedRef.current = true;
+      navigate(`/table/${playingState.view.roomId}`);
+    }
+  }, [state, navigate]);
 
   const handleCreated = useCallback(
     (roomId: string, roomState?: RoomState) => {
@@ -29,12 +58,19 @@ export default function LobbyPage() {
   );
 
   // Solo vs computer: the room is auto-created, bots added, and game started
-  // before this callback fires. Navigate straight to the table, not the waiting room.
+  // before this fires. Instead of navigating immediately (which can race with
+  // the socket delivering game:state), we store the roomId and let the
+  // useEffect above navigate only once game:state confirms screen: "playing".
   const handleSoloStarted = useCallback(
     (roomId: string) => {
-      navigate(`/table/${roomId}`);
+      pendingSoloRoomRef.current = roomId;
+      // If game:state already arrived, navigate right away
+      if (state.screen === "playing") {
+        pendingSoloRoomRef.current = null;
+        navigate(`/table/${roomId}`);
+      }
     },
-    [navigate],
+    [navigate, state.screen],
   );
 
   return (

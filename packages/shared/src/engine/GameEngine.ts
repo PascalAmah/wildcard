@@ -1,4 +1,4 @@
-import type { Card, CardColor, GameState, ClientView, Player, RoomStatus } from "../types.js";
+import type { Card, CardColor, GameState, ClientView, Player } from "../types.js";
 import { setupDeck, drawFromPile } from "../deck.js";
 import { canPlay } from "./canPlay.js";
 import { applyEffect, cardScore } from "./applyEffect.js";
