@@ -7,12 +7,16 @@ const RULES = [
     body: "Be the first player to empty your hand. When you play your last card, you win the round and score points based on the cards left in everyone else's hands.",
   },
   {
+    title: "Play modes",
+    body: "Create Table — you're the host, share the room code with friends. Join Table — enter a room code to hop into a friend's game. Play vs Computer — jump straight into a match against bots, no waiting needed.",
+  },
+  {
     title: "On your turn",
     body: "Play a card that matches the top card on the discard pile by color, number, or symbol. If you can't play, click the draw pile — a card is added to your hand and your turn passes.",
   },
   {
     title: "Action cards",
-    body: "⊘ Skip: the next player loses their turn. \u21C4 Reverse: reverses play direction. +2 Draw Two: the next player draws 2 cards and loses their turn.",
+    body: "\u2298 Skip: the next player loses their turn. \u21C4 Reverse: reverses play direction. +2 Draw Two: the next player draws 2 cards and loses their turn.",
   },
   {
     title: "Wild cards",
@@ -26,8 +30,45 @@ export default function LandingPage() {
 
   return (
     <div
-      className={`h-full overflow-auto flex flex-col items-center px-6 ${showRules ? "justify-start pt-4 pb-8" : "justify-center"}`}
+      className={`h-full overflow-auto flex flex-col items-center px-6 relative ${showRules ? "justify-start pt-4 pb-8" : "justify-center"}`}
+      style={{ background: "var(--bg)" }}
     >
+      {/* Background glow orbs */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div
+          className="absolute top-[-15%] left-[-20%] w-[500px] h-[500px] rounded-full opacity-20 blur-[120px]"
+          style={{ background: "var(--bg-glow-1)" }}
+        />
+        <div
+          className="absolute bottom-[-20%] right-[-15%] w-[400px] h-[400px] rounded-full opacity-15 blur-[100px]"
+          style={{ background: "var(--bg-glow-2)" }}
+        />
+        <div
+          className="absolute top-[40%] left-[60%] w-[300px] h-[300px] rounded-full opacity-10 blur-[80px] animate-[pulseRing_4s_ease-in-out_infinite]"
+          style={{ background: "var(--accent)" }}
+        />
+      </div>
+
+      {/* Floating decorative cards */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
+        <div
+          className="absolute top-[12%] right-[8%] w-[55px] h-[78px] rounded-xl border-2 opacity-[0.06] rotate-12 hidden sm:block"
+          style={{ borderColor: "var(--green)", background: "var(--green)", animation: "floatCard 6s ease-in-out infinite" }}
+        />
+        <div
+          className="absolute bottom-[18%] left-[6%] w-[45px] h-[64px] rounded-xl border-2 opacity-[0.05] -rotate-6 hidden sm:block"
+          style={{ borderColor: "var(--red)", background: "var(--red)", animation: "floatCard 7s ease-in-out 1s infinite" }}
+        />
+        <div
+          className="absolute top-[30%] left-[12%] w-[40px] h-[56px] rounded-xl border-2 opacity-[0.04] rotate-[20deg] hidden sm:block"
+          style={{ borderColor: "var(--blue)", background: "var(--blue)", animation: "floatCard 5.5s ease-in-out 2s infinite" }}
+        />
+        <div
+          className="absolute bottom-[25%] right-[10%] w-[50px] h-[70px] rounded-xl border-2 opacity-[0.05] -rotate-[15deg] hidden sm:block"
+          style={{ borderColor: "var(--yellow)", background: "var(--yellow)", animation: "floatCard 6.5s ease-in-out 0.5s infinite" }}
+        />
+      </div>
+
       {showRules ? (
         <div className="w-full max-w-lg mb-10">
           {/* Back above logo */}
