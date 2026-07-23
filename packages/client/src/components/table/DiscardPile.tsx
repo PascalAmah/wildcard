@@ -1,5 +1,6 @@
-import { useRef, useEffect } from "react";
+import { forwardRef, useRef, useEffect, useImperativeHandle } from "react";
 import gsap from "gsap";
+import { reducedMotionMQ, isReducedMotion } from "../../lib/gsapConfig";
 import type { Card, CardColor } from "@wildcard/shared";
 
 // ---------- helpers ----------
@@ -13,15 +14,14 @@ const colorHex: Record<CardColor, { light: string; dark: string }> = {
 
 function cardLabel(card: Card): string {
   if (card.type === "NUMBER") return String(card.value ?? "");
-  if (card.type === "SKIP") return "\u2298"; // ⊘
-  if (card.type === "REVERSE") return "\u21C4"; // ⇄
+  if (card.type === "SKIP") return "\u2298";
+  if (card.type === "REVERSE") return "\u21C4";
   if (card.type === "DRAW_TWO") return "+2";
-  if (card.type === "WILD") return "\u2605"; // ★
+  if (card.type === "WILD") return "\u2605";
   if (card.type === "WILD_DRAW_FOUR") return "+4";
   return "";
 }
 
-/** Background gradient string for non-wild cards. */
 function cardGradient(card: Card): string {
   if (!card.color) return "transparent";
   const c = colorHex[card.color];
@@ -30,87 +30,99 @@ function cardGradient(card: Card): string {
 
 // ---------- component ----------
 
+export interface DiscardPileHandle {
+  /** The DOM element for the top card — used as the fly-to target. */
+  readonly cardEl: HTMLDivElement | null;
+}
+
 interface DiscardPileProps {
   topCard: Card | null;
   activeColor: CardColor;
 }
 
-export default function DiscardPile({ topCard, activeColor }: DiscardPileProps) {
-  const cardRef = useRef<HTMLDivElement>(null);
-  const prevCardId = useRef<string | null>(null);
+const DiscardPile = forwardRef<DiscardPileHandle, DiscardPileProps>(
+  function DiscardPile({ topCard, activeColor }, ref) {
+    const cardRef = useRef<HTMLDivElement>(null);
+    const prevCardId = useRef<string | null>(null);
 
-  // Pulse the card when it changes
-  useEffect(() => {
-    if (!cardRef.current) return;
-    if (!topCard) return;
-    if (prevCardId.current === topCard.id) return;
-    prevCardId.current = topCard.id;
+    useImperativeHandle(ref, () => ({ cardEl: cardRef.current }));
 
-    gsap.fromTo(
-      cardRef.current,
-      { scale: 1 },
-      {
-        scale: 1.08,
-        duration: 0.15,
-        yoyo: true,
-        repeat: 1,
-        ease: "power2.out",
-      },
-    );
-  }, [topCard]);
+    // Pulse the card when it changes
+    useEffect(() => {
+      if (!cardRef.current) return;
+      if (!topCard) return;
+      if (prevCardId.current === topCard.id) return;
+      prevCardId.current = topCard.id;
 
-  if (!topCard) {
+      if (isReducedMotion()) return;
+
+      gsap.fromTo(
+        cardRef.current,
+        { scale: 1 },
+        {
+          scale: 1.08,
+          duration: 0.15,
+          yoyo: true,
+          repeat: 1,
+          ease: "power2.out",
+        },
+      );
+    }, [topCard]);
+
+    if (!topCard) {
+      return (
+        <div className="relative flex items-center justify-center w-[84px] h-[122px]">
+          <div
+            className="w-full h-full rounded-xl border-2 border-dashed border-[var(--line)]"
+            ref={cardRef}
+          />
+        </div>
+      );
+    }
+
+    const isWild = topCard.type === "WILD" || topCard.type === "WILD_DRAW_FOUR";
+
     return (
       <div className="relative flex items-center justify-center w-[84px] h-[122px]">
-        <div className="w-full h-full rounded-xl border-2 border-dashed border-[var(--line)]" />
+        {/* Active-color ring glow */}
+        <div
+          className="absolute w-[110px] h-[110px] rounded-full opacity-30 blur-xl"
+          style={{ backgroundColor: colorHex[activeColor].light }}
+        />
+
+        {/* Card */}
+        <div
+          ref={cardRef}
+          className="relative w-full h-full rounded-xl border-2 flex flex-col items-center justify-center select-none"
+          style={{
+            borderColor: isWild ? "rgba(255,255,255,0.4)" : "var(--card-border)",
+            background: isWild
+              ? "linear-gradient(135deg, #2b2f42, #33384f)"
+              : cardGradient(topCard),
+          }}
+        >
+          <span
+            className="font-[Fredoka] font-bold text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]"
+            style={{ fontSize: isWild ? "22px" : "26px" }}
+          >
+            {cardLabel(topCard)}
+          </span>
+
+          <span
+            className="absolute top-1.5 left-2 text-[10px] font-[Fredoka] font-bold text-white/90 drop-shadow-[0_1px_1px_rgba(0,0,0,0.4)]"
+          >
+            {cardLabel(topCard)}
+          </span>
+
+          {isWild && (
+            <span className="absolute bottom-1.5 right-2 text-[10px] font-[Fredoka] font-bold text-white/60">
+              ★
+            </span>
+          )}
+        </div>
       </div>
     );
-  }
+  },
+);
 
-  const isWild = topCard.type === "WILD" || topCard.type === "WILD_DRAW_FOUR";
-
-  return (
-    <div className="relative flex items-center justify-center w-[84px] h-[122px]">
-      {/* Active-color ring glow */}
-      <div
-        className="absolute w-[110px] h-[110px] rounded-full opacity-30 blur-xl"
-        style={{ backgroundColor: colorHex[activeColor].light }}
-      />
-
-      {/* Card */}
-      <div
-        ref={cardRef}
-        className="relative w-full h-full rounded-xl border-2 flex flex-col items-center justify-center select-none"
-        style={{
-          borderColor: isWild ? "rgba(255,255,255,0.4)" : "var(--card-border)",
-          background: isWild
-            ? "linear-gradient(135deg, #2b2f42, #33384f)"
-            : cardGradient(topCard),
-        }}
-      >
-        {/* Center label */}
-        <span
-          className="font-[Fredoka] font-bold text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]"
-          style={{ fontSize: isWild ? "22px" : "26px" }}
-        >
-          {cardLabel(topCard)}
-        </span>
-
-        {/* Corner badge — top-left */}
-        <span
-          className="absolute top-1.5 left-2 text-[10px] font-[Fredoka] font-bold text-white/90 drop-shadow-[0_1px_1px_rgba(0,0,0,0.4)]"
-        >
-          {cardLabel(topCard)}
-        </span>
-
-        {isWild && (
-          <span
-            className="absolute bottom-1.5 right-2 text-[10px] font-[Fredoka] font-bold text-white/60"
-          >
-            ★
-          </span>
-        )}
-      </div>
-    </div>
-  );
-}
+export default DiscardPile;

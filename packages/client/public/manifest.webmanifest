@@ -1,0 +1,16 @@
+{
+  "name": "Wildcard",
+  "short_name": "Wildcard",
+  "description": "A fast color-and-number matching card game for 2–10 players.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#17181d",
+  "theme_color": "#17181d",
+  "icons": [
+    { "src": "/wildcard-icon-16.png", "sizes": "16x16", "type": "image/png" },
+    { "src": "/wildcard-icon-32.png", "sizes": "32x32", "type": "image/png" },
+    { "src": "/wildcard-icon-48.png", "sizes": "48x48", "type": "image/png" },
+    { "src": "/wildcard-icon-180.png", "sizes": "180x180", "type": "image/png" },
+    { "src": "/wildcard-icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

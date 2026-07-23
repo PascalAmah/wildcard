@@ -12,7 +12,8 @@ export type GameAction =
 
 export interface RoundOverResult {
   winnerId: string;
-  scores: Record<string, number>;
+  scores: Record<string, number>; // playerId -> points scored (hand value of leftover cards)
+  handCounts: Record<string, number>; // playerId -> cards remaining in hand at round end
 }
 
 export class GameEngine {
@@ -245,13 +246,16 @@ export class GameEngine {
     this.state.winnerId = winnerId;
 
     const scores: Record<string, number> = {};
+    const handCounts: Record<string, number> = {};
     let totalScore = 0;
 
     for (const player of this.state.players) {
+      const hand = this.state.hands[player.id];
+      handCounts[player.id] = hand.length;
+
       if (player.id === winnerId) {
         scores[player.id] = 0; // Winner scores 0 this round; they get the total
       } else {
-        const hand = this.state.hands[player.id];
         const handScore = hand.reduce((sum, card) => sum + cardScore(card), 0);
         scores[player.id] = handScore;
         totalScore += handScore;
@@ -261,7 +265,7 @@ export class GameEngine {
     // Winner scores the sum of all other players' hand values
     scores[winnerId] = totalScore;
 
-    return { winnerId, scores };
+    return { winnerId, scores, handCounts };
   }
 
   /**

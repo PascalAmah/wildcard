@@ -90,6 +90,10 @@ export interface DrawCardPayload {
   roomId: string;
 }
 
+export interface RematchPayload {
+  roomId: string;
+}
+
 export type ErrorCode =
   | "ROOM_NOT_FOUND"
   | "ROOM_FULL"

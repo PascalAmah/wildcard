@@ -48,13 +48,14 @@ export type AppState =
       screen: "roundOver";
       winnerId: string;
       scores: Record<string, number>;
+      handCounts: Record<string, number>;
     };
 
 type Action =
   | { type: "GO_TO_LOBBY"; roomId: string }
   | { type: "ROOM_STATE"; room: WaitingRoomState }
   | { type: "GAME_STATE"; view: ClientView; myPlayerId: string }
-  | { type: "ROUND_OVER"; winnerId: string; scores: Record<string, number> }
+  | { type: "ROUND_OVER"; winnerId: string; scores: Record<string, number>; handCounts: Record<string, number> }
   | { type: "GO_TO_LANDING" };
 
 function reducer(state: AppState, action: Action): AppState {
@@ -65,13 +66,17 @@ function reducer(state: AppState, action: Action): AppState {
         screen: "lobby",
         roomId: action.roomId,
       };
-    case "ROOM_STATE":
+    case "ROOM_STATE": {
+      if (state.screen === "playing" || state.screen === "roundOver") {
+        return state;
+      }
       return {
         ...state,
         screen: "waiting",
         room: action.room,
         myPlayerId: socket.id ?? "",
       };
+    }
     case "GAME_STATE":
       return {
         screen: "playing",
@@ -83,6 +88,7 @@ function reducer(state: AppState, action: Action): AppState {
         screen: "roundOver",
         winnerId: action.winnerId,
         scores: action.scores,
+        handCounts: action.handCounts,
       };
     case "GO_TO_LANDING":
       return { screen: "landing" };
@@ -131,11 +137,12 @@ export function GameStateProvider({ children }: { children: ReactNode }) {
       });
     }
 
-    function onRoundOver(data: { winnerId: string; scores: Record<string, number> }) {
+    function onRoundOver(data: { winnerId: string; scores: Record<string, number>; handCounts: Record<string, number> }) {
       dispatch({
         type: "ROUND_OVER",
         winnerId: data.winnerId,
         scores: data.scores,
+        handCounts: data.handCounts,
       });
     }
 

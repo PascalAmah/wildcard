@@ -95,6 +95,9 @@ export function registerRoomHandlers(
 
       await socket.join(room.roomId);
 
+      // Cancel any auto-removal grace period timer for this player
+      room.clearDisconnectTimer(playerId);
+
       logger.info(`Player ${player.name} rejoined room ${room.roomId}`);
 
       ack?.({ success: true, roomId: room.roomId, status: room.status });
@@ -102,12 +105,12 @@ export function registerRoomHandlers(
       if (room.status === "WAITING") {
         broadcastLobbyState(io, room.roomId, room);
       } else {
-        // Send the game state to the rejoined player
-        const state = room.getEngineState();
-        if (state) {
-          emitToPlayer(io, room.roomId, playerId, "game:state", state);
-        }
+        // Send the per-player game state to the rejoined player
+        room.sendGameStateToPlayer(playerId);
       }
+
+      // Notify other players that this player reconnected
+      io.to(room.roomId).emit("player:reconnected", { playerId, playerName: player.name });
     } catch (err) {
       ack?.({ success: false, error: (err as Error).message });
     }
@@ -181,6 +184,29 @@ export function registerRoomHandlers(
     broadcastLobbyState(io, room.roomId, room);
   });
 
+  socket.on("room:rematch", (payload, ack) => {
+    const data = socket.data as SocketData;
+    const room = roomManager.getRoom(data.roomId);
+    if (!room) {
+      ack?.({ success: false, error: "Room not found" });
+      return;
+    }
+
+    if (data.playerId !== room.hostId) {
+      ack?.({ success: false, error: "Only the host can start a rematch" });
+      return;
+    }
+
+    try {
+      room.rematch();
+      logger.info(`Rematch started in room ${room.roomId}`);
+      ack?.({ success: true });
+    } catch (err) {
+      logger.error(`Failed to start rematch in room ${room.roomId}:`, (err as Error).message);
+      ack?.({ success: false, error: (err as Error).message });
+    }
+  });
+
   socket.on("room:start", (_, ack) => {
     const data = socket.data as SocketData;
     const room = roomManager.getRoom(data.roomId);
@@ -196,9 +222,11 @@ export function registerRoomHandlers(
 
     try {
       room.startGame();
+      logger.info(`Game started in room ${room.roomId}`);
       ack?.({ success: true });
       // Game state is broadcast inside startGame()
     } catch (err) {
+      logger.error(`Failed to start game in room ${room.roomId}:`, (err as Error).message);
       ack?.({ success: false, error: (err as Error).message });
     }
   });
@@ -207,9 +235,23 @@ export function registerRoomHandlers(
     const data = socket.data as SocketData;
     if (!data?.roomId) return;
 
-    // Don't remove the player immediately — they may reconnect
-    // The 60s grace period is handled client-side.
-    // If we wanted to auto-remove, we'd set a timer here.
+    const room = roomManager.getRoom(data.roomId);
+    if (!room) return;
+
+    const player = room.players.find((p) => p.id === data.playerId);
+    if (!player) return;
+
+    // Notify the room that this player disconnected, with a 60s grace-period countdown
+    io.to(data.roomId).emit("player:disconnected", {
+      playerId: data.playerId,
+      playerName: player.name,
+      countdown: 60,
+    });
+
+    // Start the server-side auto-removal timer
+    room.startDisconnectTimer(data.playerId);
+
+    logger.info(`Player ${player.name} disconnected from room ${data.roomId} — 60s grace period started`);
   });
 
   socket.on("room:requestState", () => {

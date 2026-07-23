@@ -29,6 +29,9 @@ export class Room {
   // Called by BotScheduler after a short delay when it's a bot's turn
   onBotTurn?: () => void;
 
+  // Server-side 60s grace period timers — one per disconnected player
+  private disconnectTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
+
   constructor(data: RoomData, store: RoomStore, broadcast: BroadcastFn) {
     this.roomId = data.roomId;
     this.store = store;
@@ -96,12 +99,54 @@ export class Room {
 
   /** Remove a player (or bot) by id. */
   removePlayer(playerId: string): void {
+    this.clearDisconnectTimer(playerId);
     this.data.players = this.data.players.filter((p) => p.id !== playerId);
     // Reassign host if the host left
     if (this.data.hostId === playerId && this.data.players.length > 0) {
       this.data.hostId = this.data.players[0].id;
     }
     this.persist();
+  }
+
+  /**
+   * Start a 60s grace period timer for a disconnected player.
+   * If they don't reconnect before expiry, auto-remove them.
+   */
+  startDisconnectTimer(playerId: string): void {
+    this.clearDisconnectTimer(playerId);
+    const timer = setTimeout(() => {
+      this.disconnectTimers.delete(playerId);
+      const player = this.data.players.find((p) => p.id === playerId);
+      if (!player) return;
+
+      logger.info(
+        `Grace period expired for ${player.name} in room ${this.roomId} — removing seat`,
+      );
+
+      if (this.data.status === "IN_PROGRESS") {
+        // Use playWithout to safely remove a mid-game player (advances turn if needed)
+        this.playWithout(playerId);
+      } else if (this.data.status === "WAITING" || this.data.status === "ROUND_OVER") {
+        this.removePlayer(playerId);
+      }
+
+      // Notify remaining clients that the player has been removed
+      this.broadcast("player:reconnected", {
+        playerId,
+        playerName: player.name,
+        removed: true,
+      });
+    }, 60_000);
+    this.disconnectTimers.set(playerId, timer);
+  }
+
+  /** Cancel a disconnect grace period timer (called on reconnect). */
+  clearDisconnectTimer(playerId: string): void {
+    const timer = this.disconnectTimers.get(playerId);
+    if (timer) {
+      clearTimeout(timer);
+      this.disconnectTimers.delete(playerId);
+    }
   }
 
   /** Toggle a player's ready state (lobby only). */
@@ -225,6 +270,74 @@ export class Room {
     this.scheduleTurn();
   }
 
+  // ---- Rematch ----
+
+  /**
+   * Start a fresh round in the same room with the same players.
+   * Called when the host requests a rematch.
+   */
+  rematch(): void {
+    if (this.data.status !== "ROUND_OVER") {
+      throw new Error("Round is not over");
+    }
+
+    const players: Player[] = this.data.players.map((p) => ({
+      id: p.id,
+      name: p.name,
+      isBot: p.isBot,
+    }));
+
+    this.engine = new GameEngine(
+      this.roomId,
+      players,
+      this.data.theme,
+      this.data.maxPlayers,
+    );
+
+    this.data.status = "IN_PROGRESS";
+    this.hasDrawnThisTurn = false;
+    this.persist();
+
+    // Broadcast initial game state to all players
+    this.broadcastGameState();
+
+    // Notify the room about the rematch
+    this.broadcast("game:rematch", {});
+
+    // Start turn timer or schedule bot
+    this.scheduleTurn();
+  }
+
+  // ---- Play without disconnected player ----
+
+  /**
+   * Remove a disconnected player from an in-progress game so the
+   * remaining players can continue. If the removed player is the
+   * current player, advances the turn to the next player.
+   */
+  playWithout(playerId: string): void {
+    if (!this.engine) throw new Error("Game not started");
+    if (this.data.status !== "IN_PROGRESS") {
+      throw new Error("Game not in progress");
+    }
+
+    const state = this.engine.getState();
+    const removedIndex = state.players.findIndex((p) => p.id === playerId);
+
+    // If the removed player was the current player, advance turn first
+    if (removedIndex >= 0 && removedIndex === state.currentPlayerIndex) {
+      this.engine.passTurn(playerId);
+    }
+
+    // Remove from the room's player list
+    this.removePlayer(playerId);
+    this.hasDrawnThisTurn = false;
+    this.clearTurnTimer();
+    this.persist();
+    this.broadcastGameState();
+    this.scheduleTurn();
+  }
+
   // ---- Turn timer ----
 
   private scheduleTurn(): void {
@@ -282,9 +395,15 @@ export class Room {
     if (!this.engine) return;
 
     for (const player of this.data.players) {
-      const view = this.engine.toClientView(player.id);
-      this.broadcast("game:state", view, [player.id]);
+      this.sendGameStateToPlayer(player.id);
     }
+  }
+
+  /** Send the ClientView to a single player (used by rejoin). */
+  sendGameStateToPlayer(playerId: string): void {
+    if (!this.engine) return;
+    const view = this.engine.toClientView(playerId);
+    this.broadcast("game:state", view, [playerId]);
   }
 
   /** Rebuild this Room from stored data (e.g. on server restart). */

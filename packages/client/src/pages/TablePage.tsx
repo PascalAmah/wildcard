@@ -6,9 +6,11 @@ import type { CardColor } from "@wildcard/shared";
 import { socket } from "../lib/socketClient";
 import { useGameState } from "../hooks/useGameState";
 import type { GameView } from "../hooks/useGameState";
+import { reducedMotionMQ } from "../lib/gsapConfig";
 import DiscardPile from "../components/table/DiscardPile";
+import type { DiscardPileHandle } from "../components/table/DiscardPile";
 import DrawPile from "../components/table/DrawPile";
-import Hand from "../components/table/Hand";
+import Hand, { executeFlyToDiscard } from "../components/table/Hand";
 import OpponentRow from "../components/table/OpponentRow";
 import WildColorPicker from "../components/table/WildColorPicker";
 import ReconnectOverlay from "../components/table/ReconnectOverlay";
@@ -38,8 +40,17 @@ export default function TablePage() {
   const { state } = useGameState();
 
   // ----- Derived state -----
-  const view = state.screen === "playing" ? (state as { screen: "playing"; view: GameView; myPlayerId: string }).view : null;
-  const myPlayerId = state.screen === "playing" ? (state as { screen: "playing"; view: GameView; myPlayerId: string }).myPlayerId : "";
+  const view =
+    state.screen === "playing"
+      ? (state as { screen: "playing"; view: GameView; myPlayerId: string }).view
+      : null;
+  const myPlayerId =
+    state.screen === "playing"
+      ? (state as { screen: "playing"; view: GameView; myPlayerId: string }).myPlayerId
+      : "";
+
+  // ----- Refs -----
+  const discardPileRef = useRef<DiscardPileHandle>(null);
 
   // ----- Local UI state -----
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
@@ -49,8 +60,6 @@ export default function TablePage() {
     playerName: string;
     countdown: number;
   } | null>(null);
-  // Flag to avoid showing wild picker during fly animation — we handle it in Hand
-  const [, setAwaitingWildColor] = useState(false);
 
   const toastCounter = useRef(0);
 
@@ -58,32 +67,19 @@ export default function TablePage() {
   useEffect(() => {
     if (!roomId) return;
 
-    // Note: game:state is handled by GameStateProvider (useGameState.tsx).
-    // We only listen for ancillary events here.
-
-    // Listen for game events (toast messages)
     function onGameEvent(event: GameEvent) {
       const id = `toast-${++toastCounter.current}`;
-      const msg: ToastMessage = {
-        id,
-        message: event.message,
-        type: "info" as const,
-      };
-      setToasts((prev) => [...prev, msg]);
+      setToasts((prev) => [...prev, { id, message: event.message, type: "info" as const }]);
     }
 
-    // Listen for errors
     function onError(err: { code: string; message: string }) {
       const id = `toast-${++toastCounter.current}`;
-      const msg: ToastMessage = {
-        id,
-        message: err.message || `Error: ${err.code}`,
-        type: "error" as const,
-      };
-      setToasts((prev) => [...prev, msg]);
+      setToasts((prev) => [
+        ...prev,
+        { id, message: err.message || `Error: ${err.code}`, type: "error" as const },
+      ]);
     }
 
-    // Listen for player disconnection
     function onPlayerDisconnected(payload: DisconnectPayload) {
       setDisconnectedPlayer({
         playerId: payload.playerId,
@@ -92,7 +88,6 @@ export default function TablePage() {
       });
     }
 
-    // Listen for player reconnection (clear overlay)
     function onPlayerReconnected(payload: { playerId: string }) {
       setDisconnectedPlayer((prev) =>
         prev?.playerId === payload.playerId ? null : prev,
@@ -104,13 +99,8 @@ export default function TablePage() {
     socket.on("player:disconnected", onPlayerDisconnected);
     socket.on("player:reconnected", onPlayerReconnected);
 
-    // Request fresh state on mount (handles page refresh)
+    // Request fresh state on mount
     socket.emit("room:requestState");
-
-    // Sync theme
-    if (view?.theme) {
-      document.body.dataset.theme = view.theme;
-    }
 
     return () => {
       socket.off("game:event", onGameEvent);
@@ -118,7 +108,7 @@ export default function TablePage() {
       socket.off("player:disconnected", onPlayerDisconnected);
       socket.off("player:reconnected", onPlayerReconnected);
     };
-  }, [roomId, navigate]);
+  }, [roomId]);
 
   // Update theme whenever view changes
   useEffect(() => {
@@ -135,10 +125,7 @@ export default function TablePage() {
       setDisconnectedPlayer((prev) => {
         if (!prev) return null;
         const next = prev.countdown - 1;
-        if (next <= 0) {
-          // Countdown expired — remove overlay
-          return null;
-        }
+        if (next <= 0) return null;
         return { ...prev, countdown: next };
       });
     }, 1000);
@@ -152,15 +139,18 @@ export default function TablePage() {
   }, []);
 
   // ----- Game actions -----
+
   function handlePlayCard(cardId: string, chosenColor?: CardColor) {
     if (!roomId || !view) return;
 
-    // Check if this is a wild card that needs color choice
     const card = view.myHand.find((c) => c.id === cardId);
-    if (card && (card.type === "WILD" || card.type === "WILD_DRAW_FOUR") && card.color === null && !chosenColor) {
-      // Intercept: show wild color picker first
+    if (
+      card &&
+      (card.type === "WILD" || card.type === "WILD_DRAW_FOUR") &&
+      card.color === null &&
+      !chosenColor
+    ) {
       setPendingWildCardId(cardId);
-      setAwaitingWildColor(true);
       return;
     }
 
@@ -168,14 +158,19 @@ export default function TablePage() {
   }
 
   function handleWildColorChosen(color: CardColor) {
-    if (!pendingWildCardId) return;
-    socket.emit("game:playCard", {
-      roomId,
-      cardId: pendingWildCardId,
-      chosenColor: color,
+    if (!pendingWildCardId || !roomId) return;
+
+    const targetEl = discardPileRef.current?.cardEl ?? null;
+
+    // Fly the card to discard pile, then emit
+    executeFlyToDiscard(pendingWildCardId, targetEl, () => {
+      socket.emit("game:playCard", {
+        roomId,
+        cardId: pendingWildCardId,
+        chosenColor: color,
+      });
+      setPendingWildCardId(null);
     });
-    setPendingWildCardId(null);
-    setAwaitingWildColor(false);
   }
 
   function handleDraw() {
@@ -190,9 +185,7 @@ export default function TablePage() {
 
   // ----- Reconnect handlers -----
   function handleRetry() {
-    // Reconnect the socket
     socket.connect();
-    // Request game state again
     if (roomId) {
       socket.emit("room:requestState");
     }
@@ -204,37 +197,37 @@ export default function TablePage() {
     setDisconnectedPlayer(null);
   }
 
-  // ----- Handle illegal play toast from Hand -----
-  const handleIllegalPlay = useCallback(() => {
-    // The Hand component already fires its own toast
-  }, []);
-
   // ----- Animation: table entrance -----
   const tableRef = useRef<HTMLDivElement>(null);
 
   useGSAP(
     () => {
       if (!tableRef.current) return;
-      gsap.from(tableRef.current.children, {
-        y: 30,
-        opacity: 0,
-        duration: 0.4,
-        stagger: 0.06,
-        ease: "power2.out",
+      reducedMotionMQ.add("(prefers-reduced-motion: no-preference)", (ctx) => {
+        ctx.add(() => {
+          return gsap
+            .from(tableRef.current!.children, {
+              y: 30,
+              opacity: 0,
+              duration: 0.4,
+              stagger: 0.06,
+              ease: "power2.out",
+            })
+            .kill;
+        });
       });
     },
     { scope: tableRef, dependencies: [!!view] },
   );
 
-  // ----- Loading/redirect states -----
-
-  // Redirect based on screen state
+  // ----- Screen-based redirects -----
   useEffect(() => {
     if (state.screen === "roundOver") {
-      // Navigate to results (Phase 6 will build this page)
-      const data = state as { screen: "roundOver"; winnerId: string; scores: Record<string, number> };
+      const data = state as { screen: "roundOver"; winnerId: string; scores: Record<string, number>; handCounts: Record<string, number> };
       setTimeout(() => {
-        navigate(`/table/${roomId}/results`, { state: { winnerId: data.winnerId, scores: data.scores } });
+        navigate(`/table/${roomId}/results`, {
+          state: { winnerId: data.winnerId, scores: data.scores, handCounts: data.handCounts },
+        });
       }, 2000);
     } else if (state.screen === "waiting" || state.screen === "lobby") {
       if (roomId) {
@@ -243,6 +236,7 @@ export default function TablePage() {
     }
   }, [state.screen, roomId, navigate]);
 
+  // ----- Loading state -----
   if (!view) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -251,9 +245,10 @@ export default function TablePage() {
     );
   }
 
-  const isMyTurn = view.currentPlayerIndex === view.players.findIndex((p) => p.id === myPlayerId);
+  const isMyTurn =
+    view.currentPlayerIndex === view.players.findIndex((p) => p.id === myPlayerId);
   const topCard = view.topCard;
-  const canDraw = isMyTurn;
+  const discardCardEl = discardPileRef.current?.cardEl ?? null;
 
   return (
     <div
@@ -278,15 +273,15 @@ export default function TablePage() {
 
       {/* Center area: discard + draw piles */}
       <div className="relative z-10 flex items-center gap-12">
-        <DiscardPile topCard={topCard} activeColor={view.activeColor} />
+        <DiscardPile ref={discardPileRef} topCard={topCard} activeColor={view.activeColor} />
         <DrawPile
           drawPileCount={view.drawPileCount}
           onDraw={handleDraw}
-          canDraw={canDraw}
+          canDraw={isMyTurn}
         />
       </div>
 
-      {/* Pass button (visible on player's turn when they drew) + game info */}
+      {/* Pass button + turn info */}
       <div className="relative z-10 flex flex-col items-center gap-3">
         {isMyTurn && (
           <button
@@ -297,14 +292,12 @@ export default function TablePage() {
           </button>
         )}
 
-        {/* Turn indicator */}
         <div className="text-[12px] font-semibold text-[var(--ink-dim)]">
           {isMyTurn
             ? "Your turn"
             : `Waiting for ${view.players[view.currentPlayerIndex]?.name ?? "opponent"}…`}
         </div>
 
-        {/* Direction indicator */}
         <div className="text-[11px] text-[var(--ink-dim)]">
           {view.direction === 1 ? "\u2192 Clockwise" : "\u2190 Counter-clockwise"}
         </div>
@@ -318,7 +311,8 @@ export default function TablePage() {
           activeColor={view.activeColor}
           topCard={topCard}
           isMyTurn={isMyTurn}
-          onIllegalPlay={handleIllegalPlay}
+          discardPileEl={discardCardEl}
+          onIllegalPlay={() => {}}
           onToast={(msg) => {
             const id = `toast-${++toastCounter.current}`;
             setToasts((prev) => [...prev, { id, ...msg }]);
