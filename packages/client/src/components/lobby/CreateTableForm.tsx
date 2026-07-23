@@ -3,8 +3,15 @@ import { socket } from "../../lib/socketClient";
 import type { ArenaTheme } from "@wildcard/shared";
 import Button from "../shared/Button";
 
+type PlayerData = { id: string; name: string; isBot: boolean; isReady: boolean };
+
 interface CreateTableFormProps {
-  onCreated: (roomId: string) => void;
+  onCreated: (roomId: string, roomState: {
+    players: PlayerData[];
+    hostId: string;
+    maxPlayers: number;
+    theme: ArenaTheme;
+  }) => void;
 }
 
 const ARENAS: { theme: ArenaTheme; label: string; gradient: string }[] = [
@@ -28,9 +35,24 @@ export default function CreateTableForm({ onCreated }: CreateTableFormProps) {
     setCreating(true);
     setError("");
 
-    socket.emit("room:create", { hostName: hostName.trim(), maxPlayers, theme: selectedArena }, (res: { success: boolean; roomId?: string; error?: string }) => {
+    socket.emit("room:create", { hostName: hostName.trim(), maxPlayers, theme: selectedArena }, (res: {
+      success: boolean;
+      roomId?: string;
+      players?: PlayerData[];
+      error?: string;
+    }) => {
       if (res.success && res.roomId) {
-        onCreated(res.roomId);
+        onCreated(res.roomId, {
+          players: res.players ?? [{
+            id: socket.id ?? "",
+            name: hostName.trim(),
+            isBot: false,
+            isReady: false,
+          }],
+          hostId: socket.id ?? "",
+          maxPlayers,
+          theme: selectedArena,
+        });
       } else {
         setError(res.error ?? "Failed to create table");
         setCreating(false);

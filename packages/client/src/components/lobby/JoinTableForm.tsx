@@ -3,8 +3,15 @@ import { socket } from "../../lib/socketClient";
 import Button from "../shared/Button";
 import type { ErrorCode } from "@wildcard/shared";
 
+type PlayerData = { id: string; name: string; isBot: boolean; isReady: boolean };
+
 interface JoinTableFormProps {
-  onJoined: (roomId: string) => void;
+  onJoined: (roomId: string, roomState: {
+    players: PlayerData[];
+    hostId: string;
+    maxPlayers: number;
+    theme: string;
+  }) => void;
 }
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -36,9 +43,21 @@ export default function JoinTableForm({ onJoined }: JoinTableFormProps) {
     setJoining(true);
     setError("");
 
-    socket.emit("room:join", { roomCode: roomCode.trim(), playerName: playerName.trim() }, (res: { success: boolean; roomId?: string; code?: ErrorCode; error?: string }) => {
+    socket.emit("room:join", { roomCode: roomCode.trim(), playerName: playerName.trim() }, (res: {
+      success: boolean;
+      roomId?: string;
+      players?: PlayerData[];
+      theme?: string;
+      code?: ErrorCode;
+      error?: string;
+    }) => {
       if (res.success && res.roomId) {
-        onJoined(res.roomId);
+        onJoined(res.roomId, {
+          players: res.players ?? [],
+          hostId: "",
+          maxPlayers: 0,
+          theme: res.theme ?? "midnight",
+        });
       } else {
         const msg =
           (res.code && ERROR_MESSAGES[res.code]) ?? res.error ?? "Failed to join table";

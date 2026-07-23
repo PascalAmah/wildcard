@@ -4,19 +4,26 @@ import CreateTableForm from "../components/lobby/CreateTableForm";
 import JoinTableForm from "../components/lobby/JoinTableForm";
 import SoloVsComputerForm from "../components/lobby/SoloVsComputerForm";
 
+interface RoomState {
+  players: Array<{ id: string; name: string; isBot: boolean; isReady: boolean }>;
+  hostId: string;
+  maxPlayers: number;
+  theme: string;
+}
+
 export default function LobbyPage() {
   const navigate = useNavigate();
 
   const handleCreated = useCallback(
-    (roomId: string) => {
-      navigate(`/table/${roomId}/waiting`);
+    (roomId: string, roomState?: RoomState) => {
+      navigate(`/table/${roomId}/waiting`, { state: { roomState } });
     },
     [navigate],
   );
 
   const handleJoined = useCallback(
-    (roomId: string) => {
-      navigate(`/table/${roomId}/waiting`);
+    (roomId: string, roomState?: RoomState) => {
+      navigate(`/table/${roomId}/waiting`, { state: { roomState } });
     },
     [navigate],
   );

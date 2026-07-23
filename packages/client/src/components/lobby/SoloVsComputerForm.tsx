@@ -4,8 +4,15 @@ import Button from "../shared/Button";
 
 const BOT_COLORS = ["#34c77b", "#f2b341", "#ef5b68", "#4c6ef5", "#9a9caa"];
 
+type PlayerData = { id: string; name: string; isBot: boolean; isReady: boolean };
+
 interface SoloVsComputerFormProps {
-  onCreated: (roomId: string) => void;
+  onCreated: (roomId: string, roomState?: {
+    players: PlayerData[];
+    hostId: string;
+    maxPlayers: number;
+    theme: string;
+  }) => void;
 }
 
 export default function SoloVsComputerForm({ onCreated }: SoloVsComputerFormProps) {

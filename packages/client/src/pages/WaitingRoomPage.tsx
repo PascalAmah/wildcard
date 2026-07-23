@@ -1,5 +1,5 @@
-import { useEffect, useState, useCallback } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { socket } from "../lib/socketClient";
 import type { ArenaTheme } from "@wildcard/shared";
 import RosterList from "../components/waitingroom/RosterList";
@@ -22,14 +22,16 @@ interface RoomState {
 export default function WaitingRoomPage() {
   const { roomId } = useParams<{ roomId: string }>();
   const navigate = useNavigate();
-  const [roomState, setRoomState] = useState<RoomState | null>(null);
+  const location = useLocation();
+
+  const [roomState, setRoomState] = useState<RoomState | null>(
+    (location.state as { roomState?: RoomState })?.roomState ?? null,
+  );
   const [copied, setCopied] = useState(false);
-  const [myPlayerId] = useState(socket.id ?? "");
 
   useEffect(() => {
     if (!roomId) return;
 
-    // Listen for room state updates
     function onRoomState(data: {
       players: Player[];
       hostId: string;
@@ -39,7 +41,6 @@ export default function WaitingRoomPage() {
       setRoomState(data);
     }
 
-    // Listen for game start (redirect to table)
     function onGameState() {
       navigate(`/table/${roomId}`);
     }
@@ -47,47 +48,84 @@ export default function WaitingRoomPage() {
     socket.on("room:state", onRoomState);
     socket.on("game:state", onGameState);
 
+    // Request current room state from the server.
+    // This covers page refreshes and the race where the
+    // initial broadcast arrives before the listener was set up.
+    socket.emit("room:requestState");
+
     return () => {
       socket.off("room:state", onRoomState);
       socket.off("game:state", onGameState);
     };
   }, [roomId, navigate]);
 
-  const isHost = roomState ? socket.id === roomState.hostId : false;
+  // Sync the room's arena theme to <body> so CSS variables take effect
+  useEffect(() => {
+    if (roomState?.theme) {
+      document.body.dataset.theme = roomState.theme;
+    }
+  }, [roomState?.theme]);
 
-  const handleToggleReady = useCallback(() => {
-    const me = roomState?.players.find((p) => p.id === socket.id);
+  // Set default theme on mount
+  useEffect(() => {
+    if (!document.body.dataset.theme) {
+      document.body.dataset.theme = "midnight";
+    }
+  }, []);
+
+  const [myPlayerId, setMyPlayerId] = useState(socket.id ?? "");
+  useEffect(() => {
+    function onConnect() {
+      setMyPlayerId(socket.id ?? "");
+    }
+    socket.on("connect", onConnect);
+    // If already connected, use the current id
+    if (socket.connected && socket.id) {
+      setMyPlayerId(socket.id);
+    }
+    return () => {
+      socket.off("connect", onConnect);
+    };
+  }, []);
+
+  const isHost = roomState ? myPlayerId === roomState.hostId : false;
+
+  function handleToggleReady() {
+    if (!roomState) return;
+    const pid = myPlayerId || socket.id;
+    if (!pid) return;
+    const me = roomState.players.find((p) => p.id === pid);
     if (me) {
       socket.emit("player:ready", { ready: !me.isReady });
     }
-  }, [roomState]);
+  }
 
-  const handleAddBot = useCallback(() => {
+  function handleAddBot() {
     socket.emit("room:addBot", {});
-  }, []);
+  }
 
-  const handleRemoveBot = useCallback((botId: string) => {
+  function handleRemoveBot(botId: string) {
     socket.emit("room:removeBot", { botId });
-  }, []);
+  }
 
-  const handleStart = useCallback(() => {
+  function handleStart() {
     socket.emit("room:start", {});
-  }, []);
+  }
 
-  const handleThemeChange = useCallback(
-    (theme: ArenaTheme) => {
-      socket.emit("room:setTheme", { roomId, theme });
-    },
-    [roomId],
-  );
+  function handleThemeChange(theme: ArenaTheme) {
+    socket.emit("room:setTheme", { roomId, theme });
+  }
 
-  const handleCopyLink = useCallback(() => {
-    const url = `${window.location.origin}/join/${roomId}`;
-    navigator.clipboard.writeText(url).then(() => {
+  function handleCopyCode() {
+    if (!roomId) return;
+    navigator.clipboard.writeText(roomId).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    }).catch(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 1600);
     });
-  }, [roomId]);
+  }
 
   if (!roomState) {
     return (
@@ -111,14 +149,14 @@ export default function WaitingRoomPage() {
             </div>
           </div>
           <button
-            onClick={handleCopyLink}
+            onClick={handleCopyCode}
             className={`px-4 py-2.5 rounded-xl text-[13px] font-bold cursor-pointer border transition-colors duration-200 ${
               copied
                 ? "bg-transparent border-[#34c77b] text-[#34c77b]"
                 : "bg-[var(--bg)] border-[var(--line)] text-[var(--ink)] hover:border-[#4c6ef5]"
             }`}
           >
-            {copied ? "Copied!" : "Copy link"}
+            {copied ? "Copied!" : "Copy code"}
           </button>
         </div>
 
