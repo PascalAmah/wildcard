@@ -7,6 +7,11 @@ no accounts required — link, join, play.
 
 ## How to play
 
+### Play modes
+- **Create Table** — you're the host; share the room code with friends
+- **Join Table** — enter a room code to hop into a friend's game
+- **Play vs Computer** — jump straight into a match against bots, no waiting
+
 ### Objective
 Be the first player to empty your hand. When you play your last card, you win
 the round and score points equal to the total value of the cards left in
