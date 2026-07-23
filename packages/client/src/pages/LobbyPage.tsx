@@ -68,6 +68,17 @@ export default function LobbyPage() {
   return (
     <div className="h-full overflow-auto flex items-start justify-center p-6 relative">
       <div className="w-full max-w-[920px] pb-12">
+        {/* Back button */}
+        <button
+          onClick={() => navigate("/")}
+          className="flex items-center gap-1.5 text-[13px] text-[var(--ink-dim)] font-semibold bg-transparent border-none cursor-pointer mb-5"
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <path d="M10 3L5 8l5 5" />
+          </svg>
+          Back
+        </button>
+
         {/* Logo */}
         <div className="flex items-center gap-2.5 justify-center mb-9">
           <div className="w-[14px] h-[14px] rounded-[4px] rotate-[8deg] bg-[conic-gradient(from_45deg,#34c77b,#f2b341,#ef5b68,#4c6ef5,#34c77b)]" />

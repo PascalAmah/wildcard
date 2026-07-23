@@ -144,6 +144,16 @@ export default function WaitingRoomPage() {
   return (
     <div className="h-full overflow-auto flex items-start justify-center p-6">
       <div className="w-full max-w-[560px]">
+        {/* Back button */}
+        <button
+          onClick={() => navigate("/lobby")}
+          className="flex items-center gap-1.5 text-[13px] text-[var(--ink-dim)] font-semibold bg-transparent border-none cursor-pointer mb-4"
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <path d="M10 3L5 8l5 5" />
+          </svg>
+          Back to lobby
+        </button>
         {/* Room code panel */}
         <div className="bg-[var(--panel)] border border-[var(--line)] rounded-2xl p-[26px_30px] flex items-center justify-between mb-4">
           <div>
