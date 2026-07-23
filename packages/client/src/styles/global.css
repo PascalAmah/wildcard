@@ -12,22 +12,43 @@
 
 body {
   font-family: "Manrope", sans-serif;
-  min-height: 100vh;
-  min-height: 100dvh; /* dynamic viewport height — avoids iOS Safari chrome overlap */
+  height: 100dvh;
+  overflow: hidden;
   background: var(--bg);
   color: var(--ink);
   transition: background 0.5s ease;
-  /* Safe-area insets for notched/iOS devices */
   padding-top: env(safe-area-inset-top);
   padding-right: env(safe-area-inset-right);
   padding-bottom: env(safe-area-inset-bottom);
   padding-left: env(safe-area-inset-left);
+  /* Prevent iOS overscroll/bounce */
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Hide scrollbars on scrollable containers */
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
 }
 
 /* Ensure any full-screen overlay uses safe-area too */
 .fixed.inset-0 {
   padding-top: env(safe-area-inset-top);
   padding-bottom: env(safe-area-inset-bottom);
+}
+
+#root {
+  height: 100%;
+  overflow: hidden;
 }
 
 /* Pulse ring animation for connection-lost overlay */
@@ -75,7 +96,7 @@ body {
   }
 }
 
-/* Blink animation for retry dots */
+/* Blink animation for retry dots (ConnectionLostOverlay) */
 @keyframes blink {
   0%,
   80%,
@@ -85,4 +106,10 @@ body {
   40% {
     opacity: 1;
   }
+}
+
+/* Loader progress bar — GPU-accelerated grow via scaleX */
+@keyframes fillBar {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
 }

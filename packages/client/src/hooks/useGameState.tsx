@@ -5,8 +5,8 @@ import {
   useEffect,
   type ReactNode,
 } from "react";
-import type { ClientView, ArenaTheme } from "@wildcard/shared";
-import { socket } from "../lib/socketClient";
+import type { ClientView, RoomStatus, ArenaTheme } from "@wildcard/shared";
+import { socket, getStoredPlayerId } from "../lib/socketClient";
 
 // ---------- Types ----------
 
@@ -52,7 +52,7 @@ export type AppState =
 
 type Action =
   | { type: "GO_TO_LOBBY"; roomId: string }
-  | { type: "ROOM_STATE"; room: WaitingRoomState }
+  | { type: "ROOM_STATE"; room: WaitingRoomState; myPlayerId: string }
   | { type: "GAME_STATE"; view: ClientView; myPlayerId: string }
   | { type: "ROUND_OVER"; winnerId: string; scores: Record<string, number>; handCounts: Record<string, number> }
   | { type: "GO_TO_LANDING" };
@@ -73,7 +73,7 @@ function reducer(state: AppState, action: Action): AppState {
         ...state,
         screen: "waiting",
         room: action.room,
-        myPlayerId: socket.id ?? "",
+        myPlayerId: action.myPlayerId,
       };
     }
     case "GAME_STATE":
@@ -125,6 +125,7 @@ export function GameStateProvider({ children }: { children: ReactNode }) {
       dispatch({
         type: "ROOM_STATE",
         room: data,
+        myPlayerId: getStoredPlayerId() || socket.id || "",
       });
     }
 
@@ -132,7 +133,7 @@ export function GameStateProvider({ children }: { children: ReactNode }) {
       dispatch({
         type: "GAME_STATE",
         view: data,
-        myPlayerId: socket.id ?? "",
+        myPlayerId: getStoredPlayerId() || socket.id || "",
       });
     }
 

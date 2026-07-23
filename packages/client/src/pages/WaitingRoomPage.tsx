@@ -135,14 +135,14 @@ export default function WaitingRoomPage() {
 
   if (!roomState) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="h-full overflow-auto flex items-start justify-center">
         <div className="text-[var(--ink-dim)] text-[14px]">Loading room…</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-6">
+    <div className="h-full overflow-auto flex items-start justify-center p-6">
       <div className="w-full max-w-[560px]">
         {/* Room code panel */}
         <div className="bg-[var(--panel)] border border-[var(--line)] rounded-2xl p-[26px_30px] flex items-center justify-between mb-4">

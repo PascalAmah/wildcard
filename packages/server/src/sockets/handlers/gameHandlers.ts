@@ -29,12 +29,15 @@ export function registerGameHandlers(
         payload.chosenColor as CardColor | undefined,
       );
 
-      // Emit game:event for toasts
+      // Emit game:event for toasts — include chosen color for wilds
+      const colorName = payload.chosenColor
+        ? ` and chose ${payload.chosenColor}`
+        : "";
       emitGameEvent(io, room.roomId, {
         type: "PLAY_CARD",
         actorId: data.playerId,
         cardId: payload.cardId,
-        message: `${data.playerName} played a card`,
+        message: `${data.playerName} played a card${colorName}`,
       });
 
       if (result) {

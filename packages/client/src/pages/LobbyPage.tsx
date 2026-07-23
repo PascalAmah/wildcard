@@ -18,13 +18,9 @@ export default function LobbyPage() {
   const pendingSoloRoomRef = useRef<string | null>(null);
   const navigatedRef = useRef(false);
 
-  // Navigate to the table when the server confirms game state for solo-vs-computer.
-  // We gate on the GameStateProvider receiving game:state rather than the socket
-  // ack callback, so navigation never races with the game state delivery.
   useEffect(() => {
     if (state.screen !== "playing" || navigatedRef.current) return;
 
-    // If the solo form set a pending room, use that
     if (pendingSoloRoomRef.current) {
       const roomId = pendingSoloRoomRef.current;
       pendingSoloRoomRef.current = null;
@@ -33,9 +29,6 @@ export default function LobbyPage() {
       return;
     }
 
-    // Fallback: if game:state arrived but the solo callback never fired
-    // (e.g. socket disconnect during room:start ack), navigate to the
-    // table using the roomId embedded in the game view.
     const playingState = state as { screen: "playing"; view: { roomId: string } };
     if (playingState.view?.roomId) {
       navigatedRef.current = true;
@@ -64,7 +57,6 @@ export default function LobbyPage() {
   const handleSoloStarted = useCallback(
     (roomId: string) => {
       pendingSoloRoomRef.current = roomId;
-      // If game:state already arrived, navigate right away
       if (state.screen === "playing") {
         pendingSoloRoomRef.current = null;
         navigate(`/table/${roomId}`);
@@ -74,8 +66,8 @@ export default function LobbyPage() {
   );
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-6">
-      <div className="w-full max-w-[920px]">
+    <div className="h-full overflow-auto flex items-start justify-center p-6 relative">
+      <div className="w-full max-w-[920px] pb-12">
         {/* Logo */}
         <div className="flex items-center gap-2.5 justify-center mb-9">
           <div className="w-[14px] h-[14px] rounded-[4px] rotate-[8deg] bg-[conic-gradient(from_45deg,#34c77b,#f2b341,#ef5b68,#4c6ef5,#34c77b)]" />
@@ -88,6 +80,20 @@ export default function LobbyPage() {
           <JoinTableForm onJoined={handleJoined} />
           <SoloVsComputerForm onGameStarted={handleSoloStarted} />
         </div>
+      </div>
+
+      {/* Bottom fade + scroll hint (visible only when content overflows) */}
+      <div
+        className="fixed bottom-0 left-0 right-0 h-20 pointer-events-none md:hidden"
+        style={{
+          background: "linear-gradient(to top, var(--bg) 0%, transparent 100%)",
+        }}
+      />
+      <div className="fixed bottom-5 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1 pointer-events-none md:hidden">
+        <span className="text-[11px] text-[var(--ink-dim)]">scroll for more options</span>
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="var(--ink-dim)" strokeWidth="2" strokeLinecap="round">
+          <path d="M3 5l4 4 4-4" />
+        </svg>
       </div>
     </div>
   );

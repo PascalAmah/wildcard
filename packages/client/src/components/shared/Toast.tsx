@@ -13,7 +13,7 @@ interface ToastProps {
 
 export default function Toast({ messages, onDismiss }: ToastProps) {
   return (
-    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 items-center pointer-events-none">
+    <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 items-center pointer-events-none" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
       {messages.map((msg) => (
         <ToastItem key={msg.id} message={msg} onDismiss={onDismiss} />
       ))}
@@ -55,7 +55,7 @@ function ToastItem({
         pointer-events-auto rounded-xl px-5 py-3 border text-sm font-semibold
         transition-all duration-300 ease-out
         ${bgColor}
-        ${visible ? "translate-y-0 opacity-100" : "translate-y-4 opacity-0"}
+        ${visible ? "translate-y-0 opacity-100" : "-translate-y-4 opacity-0"}
       `}
     >
       {message.message}

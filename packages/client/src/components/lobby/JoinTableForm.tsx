@@ -87,7 +87,7 @@ export default function JoinTableForm({ onJoined }: JoinTableFormProps) {
         onChange={(e) => setPlayerName(e.target.value)}
         placeholder="e.g. Maya"
         maxLength={16}
-        className="w-full bg-[var(--bg)] border border-[var(--line)] rounded-xl p-[14px_16px] text-[15px] text-[var(--ink)] mb-[18px] outline-none focus:border-[#4c6ef5] placeholder:text-[#5a5c6b]"
+        className="w-full bg-[var(--bg)] border border-[var(--line)] rounded-xl p-[14px_16px] text-[16px] text-[var(--ink)] mb-[18px] outline-none focus:border-[#4c6ef5] placeholder:text-[#5a5c6b]"
       />
 
       <label className="text-[12.5px] font-bold text-[var(--ink-dim)] uppercase tracking-[0.05em] mb-2 block">

@@ -4,7 +4,7 @@ export default function LandingPage() {
   const navigate = useNavigate();
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-6">
+    <div className="h-full overflow-auto flex flex-col items-center justify-center px-6">
       {/* Logo */}
       <div className="flex items-center gap-2.5 mb-8">
         <div className="w-[14px] h-[14px] rounded-[4px] rotate-[8deg] bg-[conic-gradient(from_45deg,#34c77b,#f2b341,#ef5b68,#4c6ef5,#34c77b)]" />
