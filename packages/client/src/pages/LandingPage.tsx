@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import gsap from "gsap";
 
 const RULES = [
   {
@@ -27,48 +28,27 @@ const RULES = [
 export default function LandingPage() {
   const navigate = useNavigate();
   const [showRules, setShowRules] = useState(false);
+  const pageRef = useRef<HTMLDivElement>(null);
+
+  // Staggered entrance animation on mount
+  useEffect(() => {
+    if (!pageRef.current || showRules) return;
+    const items = pageRef.current.querySelectorAll(".landing-animate");
+    gsap.fromTo(
+      items,
+      { y: 24, opacity: 0 },
+      { y: 0, opacity: 1, duration: 0.5, stagger: 0.12, ease: "power2.out" },
+    );
+  }, [showRules]);
 
   return (
     <div
-      className={`h-full overflow-auto flex flex-col items-center px-6 relative ${showRules ? "justify-start pt-4 pb-8" : "justify-center"}`}
-      style={{ background: "var(--bg)" }}
+      ref={pageRef}
+      className={`h-full overflow-auto flex flex-col items-center px-6 ${showRules ? "justify-start pt-4 pb-8" : "justify-center"}`}
+      style={{
+        background: "radial-gradient(ellipse 600px 400px at 50% 30%, rgba(76,110,245,0.06) 0%, transparent 70%), radial-gradient(ellipse 800px 300px at 50% 80%, rgba(52,199,123,0.04) 0%, transparent 70%), var(--bg)",
+      }}
     >
-      {/* Background glow orbs */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div
-          className="absolute top-[-15%] left-[-20%] w-[500px] h-[500px] rounded-full opacity-20 blur-[120px]"
-          style={{ background: "var(--bg-glow-1)" }}
-        />
-        <div
-          className="absolute bottom-[-20%] right-[-15%] w-[400px] h-[400px] rounded-full opacity-15 blur-[100px]"
-          style={{ background: "var(--bg-glow-2)" }}
-        />
-        <div
-          className="absolute top-[40%] left-[60%] w-[300px] h-[300px] rounded-full opacity-10 blur-[80px] animate-[pulseRing_4s_ease-in-out_infinite]"
-          style={{ background: "var(--accent)" }}
-        />
-      </div>
-
-      {/* Floating decorative cards */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
-        <div
-          className="absolute top-[12%] right-[8%] w-[55px] h-[78px] rounded-xl border-2 opacity-[0.06] rotate-12 hidden sm:block"
-          style={{ borderColor: "var(--green)", background: "var(--green)", animation: "floatCard 6s ease-in-out infinite" }}
-        />
-        <div
-          className="absolute bottom-[18%] left-[6%] w-[45px] h-[64px] rounded-xl border-2 opacity-[0.05] -rotate-6 hidden sm:block"
-          style={{ borderColor: "var(--red)", background: "var(--red)", animation: "floatCard 7s ease-in-out 1s infinite" }}
-        />
-        <div
-          className="absolute top-[30%] left-[12%] w-[40px] h-[56px] rounded-xl border-2 opacity-[0.04] rotate-[20deg] hidden sm:block"
-          style={{ borderColor: "var(--blue)", background: "var(--blue)", animation: "floatCard 5.5s ease-in-out 2s infinite" }}
-        />
-        <div
-          className="absolute bottom-[25%] right-[10%] w-[50px] h-[70px] rounded-xl border-2 opacity-[0.05] -rotate-[15deg] hidden sm:block"
-          style={{ borderColor: "var(--yellow)", background: "var(--yellow)", animation: "floatCard 6.5s ease-in-out 0.5s infinite" }}
-        />
-      </div>
-
       {showRules ? (
         <div className="w-full max-w-lg mb-10">
           {/* Back above logo */}
@@ -113,22 +93,25 @@ export default function LandingPage() {
       ) : (
         <>
           {/* Logo */}
-          <div className="flex items-center gap-2.5 mb-8">
-            <div className="w-[14px] h-[14px] rounded-[4px] rotate-[8deg] bg-[conic-gradient(from_45deg,#34c77b,#f2b341,#ef5b68,#4c6ef5,#34c77b)]" />
+          <div className="flex items-center gap-2.5 mb-8 landing-animate">
+            <div
+              className="w-[14px] h-[14px] rounded-[4px] bg-[conic-gradient(from_45deg,#34c77b,#f2b341,#ef5b68,#4c6ef5,#34c77b)]"
+              style={{ animation: "logoSpin 8s linear infinite" }}
+            />
             <span className="font-[Fredoka] font-bold text-[20px]" style={{ fontFamily: "'Fredoka', sans-serif" }}>Wildcard</span>
           </div>
 
-          <h1 className="font-[Fredoka] font-semibold text-[32px] mb-3 text-center" style={{ fontFamily: "'Fredoka', sans-serif" }}>
+          <h1 className="font-[Fredoka] font-semibold text-[32px] mb-3 text-center landing-animate" style={{ fontFamily: "'Fredoka', sans-serif" }}>
             A fast color-and-number matching card game
           </h1>
-          <p className="text-[var(--ink-dim)] text-[16px] max-w-md text-center leading-relaxed mb-10">
+          <p className="text-[var(--ink-dim)] text-[16px] max-w-md text-center leading-relaxed mb-10 landing-animate">
             For 2–10 players. No accounts, no downloads — just a room code and you're in.
           </p>
 
-          <div className="flex flex-col items-center gap-3">
+          <div className="flex flex-col items-center gap-3 landing-animate">
             <button
               onClick={() => navigate("/lobby")}
-              className="border-none rounded-xl px-10 py-4 font-bold text-[16px] cursor-pointer bg-gradient-to-r from-[#ef5b68] to-[#d94655] text-white shadow-lg shadow-[rgba(239,91,104,0.28)] hover:-translate-y-0.5 hover:shadow-xl transition-all duration-180 ease-out"
+              className="border-none rounded-xl px-10 py-4 font-bold text-[16px] cursor-pointer bg-gradient-to-r from-[#ef5b68] to-[#d94655] text-white shadow-lg shadow-[rgba(239,91,104,0.28)] hover:-translate-y-0.5 hover:shadow-xl hover:shadow-[rgba(239,91,104,0.45)] active:translate-y-0 transition-all duration-200 ease-out"
             >
               Play now
             </button>
