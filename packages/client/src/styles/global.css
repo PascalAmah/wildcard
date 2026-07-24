@@ -114,8 +114,8 @@ body {
   to   { transform: scaleX(1); }
 }
 
-/* Floating card animation for landing page — uses margin-top to avoid overriding rotate */
-@keyframes floatCard {
-  0%, 100% { margin-top: 0; }
-  50%      { margin-top: -16px; }
+/* Logo color chip rotation */
+@keyframes logoSpin {
+  from { transform: rotate(8deg); }
+  to   { transform: rotate(368deg); }
 }
