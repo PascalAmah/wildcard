@@ -26,9 +26,9 @@ the draw pile — a card is added to your hand and your turn passes.
 | Card | Effect |
 |------|--------|
 | ⊘ Skip | The next player loses their turn |
-| \u21C4 Reverse | Reverses the direction of play |
+| ⇄ Reverse | Reverses the direction of play |
 | +2 Draw Two | The next player draws 2 cards and loses their turn |
-| \u2605 Wild | Play on any turn and choose a color |
+| ★ Wild | Play on any turn and choose a color |
 | +4 Wild Draw Four | Choose a color — the next player draws 4 and loses turn |
 
 ### Scoring
