@@ -38,4 +38,9 @@ export class EffectQueue {
   toArray(): EffectStep[] {
     return [...this.steps];
   }
+
+  /** Returns true if any step in the queue is a skipTurn step. */
+  hasSkipStep(): boolean {
+    return this.steps.some((s) => s.type === "skipTurn");
+  }
 }

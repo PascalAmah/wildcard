@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
-import { socket } from "../lib/socketClient";
+import { socket, getStoredPlayerId } from "../lib/socketClient";
 import type { ArenaTheme } from "@wildcard/shared";
 import RosterList from "../components/waitingroom/RosterList";
 import ArenaPicker from "../components/waitingroom/ArenaPicker";
@@ -28,7 +28,10 @@ export default function WaitingRoomPage() {
     (location.state as { roomState?: RoomState })?.roomState ?? null,
   );
   const [copied, setCopied] = useState(false);
+  const [rejoinConfirmed, setRejoinConfirmed] = useState(false);
   const navigatedRef = useRef(false);
+  const roomStateRef = useRef(roomState);
+  roomStateRef.current = roomState;
 
   useEffect(() => {
     if (!roomId) return;
@@ -39,9 +42,19 @@ export default function WaitingRoomPage() {
       hostId: string;
       maxPlayers: number;
       theme: ArenaTheme;
+      status: string;
     }) {
       if (!navigatedRef.current) {
         setRoomState(data);
+        setRejoinConfirmed(true);
+
+        // If the game already started while we were refreshing, navigate
+        // to the table immediately. This covers the case where game:state
+        // was missed due to socket rejoin timing.
+        if (data.status !== "WAITING") {
+          navigatedRef.current = true;
+          navigate(`/table/${roomId}`);
+        }
       }
     }
 
@@ -57,9 +70,19 @@ export default function WaitingRoomPage() {
     // Request current room state from the server.
     // This covers page refreshes and the race where the
     // initial broadcast arrives before the listener was set up.
-    socket.emit("room:requestState");
+    // Retry a few times to account for the async room:rejoin.
+    let retries = 0;
+    function poll() {
+      socket.emit("room:requestState");
+      if (!roomStateRef.current && retries < 5) {
+        retries++;
+        setTimeout(poll, 500);
+      }
+    }
+    poll();
 
     return () => {
+      retries = 5;
       socket.off("room:state", onRoomState);
       socket.off("game:state", onGameState);
     };
@@ -79,22 +102,27 @@ export default function WaitingRoomPage() {
     }
   }, []);
 
-  const [myPlayerId, setMyPlayerId] = useState(socket.id ?? "");
+  // Use the stored player ID as the stable identity across page refreshes.
+  // On initial load, socket.id may be a fresh connection ID, but the server
+  // maps it back to the original player ID via room:rejoin. The stored ID
+  // remains consistent and matches the hostId from room:state.
+  const storedPlayerId = getStoredPlayerId();
+  const [myPlayerId, setMyPlayerId] = useState(storedPlayerId || socket.id || "");
   useEffect(() => {
     function onConnect() {
-      setMyPlayerId(socket.id ?? "");
+      setMyPlayerId(storedPlayerId || socket.id || "");
     }
     socket.on("connect", onConnect);
-    // If already connected, use the current id
+    // If already connected, use stored id or current socket id
     if (socket.connected && socket.id) {
-      setMyPlayerId(socket.id);
+      setMyPlayerId(storedPlayerId || socket.id);
     }
     return () => {
       socket.off("connect", onConnect);
     };
   }, []);
 
-  const isHost = roomState ? myPlayerId === roomState.hostId : false;
+  const isHost = roomState ? (myPlayerId === roomState.hostId || storedPlayerId === roomState.hostId) : false;
 
   function handleToggleReady() {
     if (!roomState) return;
@@ -198,6 +226,7 @@ export default function WaitingRoomPage() {
           hostId={roomState.hostId}
           myPlayerId={myPlayerId || socket.id || ""}
           isHost={isHost}
+          rejoinConfirmed={rejoinConfirmed}
           onToggleReady={handleToggleReady}
           onAddBot={handleAddBot}
           onRemoveBot={handleRemoveBot}

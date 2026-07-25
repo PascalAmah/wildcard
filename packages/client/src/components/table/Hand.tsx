@@ -1,6 +1,5 @@
 import { useRef, useCallback, useLayoutEffect, useMemo, useEffect } from "react";
 import gsap from "gsap";
-import { Flip } from "gsap/Flip";
 import { canPlay } from "@wildcard/shared";
 import type { Card, CardColor } from "@wildcard/shared";
 import { hapticPlay, hapticInvalid } from "../../hooks/useHaptics";
@@ -42,7 +41,7 @@ function cardInlineStyle(
   total: number,
 ): React.CSSProperties {
   return {
-    marginLeft: idx === 0 ? "0" : "-16px",
+    marginLeft: idx === 0 ? "0" : "-14px",
     zIndex: idx,
     borderColor: isWildCard(card)
       ? "rgba(255,255,255,0.4)"
@@ -51,7 +50,6 @@ function cardInlineStyle(
       ? "linear-gradient(135deg, #2b2f42, #33384f)"
       : cardGradient(card),
     transform: `rotate(${(idx - (total - 1) / 2) * 2}deg)`,
-    transition: "transform 0.2s ease, box-shadow 0.2s ease",
   };
 }
 
@@ -81,9 +79,7 @@ export default function Hand({
 }: HandProps) {
   const handRef = useRef<HTMLDivElement>(null);
   const shakeTargets = useRef<Map<string, HTMLElement>>(new Map());
-  const flipStateRef = useRef<Flip.FlipState | null>(null);
-  const prevCardsKey = useRef("");
-  // Track which cards just entered so we can animate them
+  const beforeRectsRef = useRef<Map<string, DOMRect> | null>(null);
   const prevCardIds = useRef<Set<string>>(new Set());
   // Map card ID → its DOM element for the fly-out clone
   const cardEls = useRef<Map<string, HTMLElement>>(new Map());
@@ -98,13 +94,18 @@ export default function Hand({
     }
   }, []);
 
-  // ---- GSAP Flip: capture old positions BEFORE React re-render ----
+  // Capture bounding rects BEFORE React re-render (same technique as mockup)
   const cardsKey = cards.map((c) => c.id).join(",");
-  if (cardsKey !== prevCardsKey.current && handRef.current) {
-    flipStateRef.current = Flip.getState(".hcard", {
-      props: "transform",
+  const prevKey = useRef("");
+  if (cardsKey !== prevKey.current && handRef.current) {
+    const rects = new Map<string, DOMRect>();
+    handRef.current.querySelectorAll(".hcard").forEach((el) => {
+      const id = (el as HTMLElement).dataset.cardId;
+      if (id) rects.set(id, el.getBoundingClientRect());
     });
+    beforeRectsRef.current = rects;
   }
+  prevKey.current = cardsKey;
 
   // Detect new cards for entrance animation
   const newCardIds = useMemo(() => {
@@ -118,34 +119,47 @@ export default function Hand({
     return newIds;
   }, [cards]);
 
-  prevCardsKey.current = cardsKey;
-
-  // ---- Apply Flip reflow + new-card entrance AFTER React commit ----
+  // ---- Apply position shifts + new-card entrance AFTER React commit ----
   useLayoutEffect(() => {
-    if (!handRef.current) return;
-    if (isReducedMotion()) return;
+    if (!handRef.current || isReducedMotion()) return;
 
-    const state = flipStateRef.current;
-    flipStateRef.current = null;
+    const beforeRects = beforeRectsRef.current;
+    beforeRectsRef.current = null;
 
-    // Flip-reflow the remaining cards
-    if (state) {
-      Flip.from(state, {
-        duration: 0.35,
-        ease: easeOut,
-        absolute: true,
-        toggleClass: "flipping",
+    // Shift remaining cards from old positions to new (FLIP-like)
+    if (beforeRects) {
+      handRef.current.querySelectorAll(".hcard").forEach((el) => {
+        const htmlEl = el as HTMLElement;
+        const id = htmlEl.dataset.cardId;
+        if (!id) return;
+        const before = beforeRects.get(id);
+        if (!before) return; // new card — handled separately
+        const after = el.getBoundingClientRect();
+        const dx = before.left - after.left;
+        const dy = before.top - after.top;
+        if (dx !== 0 || dy !== 0) {
+          // Animate from old position to new, preserving the inline rotate.
+          const finalTransform = htmlEl.style.transform;
+          const fromTransform = "translate(" + dx + "px, " + dy + "px)" + (finalTransform ? " " + finalTransform : "");
+          gsap.fromTo(
+            htmlEl,
+            { transform: fromTransform },
+            { transform: finalTransform || "none", duration: 0.35, ease: easeOut },
+          );
+        }
       });
     }
 
-    // Animate newly-arrived cards: rise-and-fade (port from mockup)
+    // Animate newly-arrived cards: rise-and-fade (same as mockup)
     for (const id of newCardIds) {
       const el = cardEls.current.get(id);
       if (el) {
+        const finalTransform = el.style.transform;
+        const fromTransform = "translateY(20px)" + (finalTransform ? " " + finalTransform : "");
         gsap.fromTo(
           el,
-          { y: 20, opacity: 0 },
-          { y: 0, opacity: 1, duration: 0.3, ease: easeOut },
+          { transform: fromTransform, opacity: 0 },
+          { transform: finalTransform || "none", opacity: 1, duration: 0.3, ease: easeOut },
         );
       }
     }
@@ -271,73 +285,79 @@ export default function Hand({
     });
   }
 
-  if (cards.length === 0) {
-    return (
-      <div className="flex items-center justify-center h-[130px] text-[var(--ink-dim)] text-[14px]">
-        No cards in hand
-      </div>
-    );
-  }
-
   const total = cards.length;
 
   return (
-    <div
-      ref={handRef}
-      className="overflow-x-auto overflow-y-visible scrollbar-none py-3"
-    >
+    <div className="flex flex-col pb-1">
+      {total > 0 && (
+        <div className="text-[12px] font-semibold text-center text-[var(--ink-dim)] pb-1">
+          Your hand
+        </div>
+      )}
+
       <div
-        className="flex items-end mx-auto w-fit"
-        style={{
-          perspective: "1000px",
-          gap: total > 10 ? "-28px" : total > 7 ? "-22px" : "-16px",
-      }}
-    >
-      {cards.map((card, idx) => {
-        const isWild = isWildCard(card);
-        const isLegal = canPlay(card, topCard, activeColor);
-        const isClickable = isMyTurn && isLegal;
-
-        return (
-          <div
-            key={card.id}
-            ref={(el) => registerCard(card.id, el)}
-            data-card-id={card.id}
-            className={`hcard relative flex-shrink-0 w-[68px] h-[100px] sm:w-[84px] sm:h-[122px] rounded-xl border-2 flex flex-col items-center justify-center select-none transition-shadow duration-150 ${
-              isClickable
-                ? "cursor-pointer hover:shadow-[0_0_16px_rgba(255,255,255,0.2)] hover:-translate-y-3"
-                : "cursor-default"
-            } ${isLegal && isMyTurn ? "hover:-translate-y-3" : ""}`}
-            style={cardInlineStyle(card, idx, total)}
-            onClick={() => handleCardClick(card)}
-          >
-            {/* Corner badge — top-left */}
-            <span className="absolute top-1.5 left-2 text-[10px] font-[Fredoka] font-bold text-white/90 drop-shadow-[0_1px_1px_rgba(0,0,0,0.4)]">
-              {cardLabel(card)}
-            </span>
-
-            {/* Center label */}
-            <span
-              className="font-[Fredoka] font-bold text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]"
-              style={{ fontSize: isWild ? "22px" : "26px" }}
-            >
-              {cardLabel(card)}
-            </span>
-
-            {/* Corner badge — bottom-right (rotated for symmetry) */}
-            <span className="absolute bottom-1.5 right-2 text-[10px] font-[Fredoka] font-bold text-white/90 drop-shadow-[0_1px_1px_rgba(0,0,0,0.4)] rotate-180">
-              {cardLabel(card)}
-            </span>
-
-            {/* Wild star indicator */}
-            {isWild && (
-              <span className="absolute bottom-1.5 left-2 text-[10px] font-[Fredoka] font-bold text-white/60">
-                ★
-              </span>
-            )}
+        ref={handRef}
+        className="overflow-x-auto overflow-y-visible scrollbar-none pt-3 pb-5"
+      >
+        {total === 0 ? (
+          <div className="flex items-center justify-center h-[130px] text-[var(--ink-dim)] text-[14px]">
+            No cards in hand
           </div>
-        );
-      })}
+        ) : (
+          <div
+            className="flex items-end mx-auto w-fit"
+            style={{
+              perspective: "1000px",
+              gap: total > 10 ? "-24px" : total > 7 ? "-18px" : "-14px",
+            }}
+          >
+            {cards.map((card, idx) => {
+              const isWild = isWildCard(card);
+              const isLegal = canPlay(card, topCard, activeColor);
+              const isClickable = isMyTurn && isLegal;
+
+              return (
+                <div
+                  key={card.id}
+                  ref={(el) => registerCard(card.id, el)}
+                  data-card-id={card.id}
+                  className={`hcard relative flex-shrink-0 w-[60px] h-[88px] sm:w-[72px] sm:h-[105px] rounded-xl border-2 flex flex-col items-center justify-center select-none transition-shadow duration-150 ${
+                    isClickable
+                      ? "cursor-pointer hover:shadow-[0_0_16px_rgba(255,255,255,0.2)] hover:-translate-y-3"
+                      : "cursor-default"
+                  } ${isLegal && isMyTurn ? "hover:-translate-y-3" : ""}`}
+                  style={cardInlineStyle(card, idx, total)}
+                  onClick={() => handleCardClick(card)}
+                >
+                  {/* Corner badge — top-left */}
+                  <span className="absolute top-1 left-1.5 text-[9px] font-[Fredoka] font-bold text-white/90 drop-shadow-[0_1px_1px_rgba(0,0,0,0.4)]">
+                    {cardLabel(card)}
+                  </span>
+
+                  {/* Center label */}
+                  <span
+                    className="font-[Fredoka] font-bold text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]"
+                    style={{ fontSize: isWild ? "18px" : "22px" }}
+                  >
+                    {cardLabel(card)}
+                  </span>
+
+                  {/* Corner badge — bottom-right (rotated for symmetry) */}
+                  <span className="absolute bottom-1 right-1.5 text-[9px] font-[Fredoka] font-bold text-white/90 drop-shadow-[0_1px_1px_rgba(0,0,0,0.4)] rotate-180">
+                    {cardLabel(card)}
+                  </span>
+
+                  {/* Wild star indicator */}
+                  {isWild && (
+                    <span className="absolute bottom-1 left-1.5 text-[9px] font-[Fredoka] font-bold text-white/60">
+                      ★
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

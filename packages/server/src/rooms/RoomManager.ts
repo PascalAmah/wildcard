@@ -67,6 +67,8 @@ export class RoomManager {
     );
 
     this.rooms.set(roomId, room);
+    room.onEmpty = () => this.removeEmptyRoom(roomId);
+
     await this.store.setRoom({
       roomId,
       status: "WAITING",
@@ -100,6 +102,7 @@ export class RoomManager {
       }
       room = Room.fromData(data, this.store, this.makeRoomBroadcast(roomId));
       this.rooms.set(roomId, room);
+      room.onEmpty = () => this.removeEmptyRoom(roomId);
     }
 
     if (room.status !== "WAITING") {
@@ -127,6 +130,16 @@ export class RoomManager {
       this.store.deleteRoom(roomId).catch(() => {});
       logger.info(`Room ${roomId} deleted (empty)`);
     }
+  }
+
+  /** Delete an empty room. Safe to call on non-empty rooms (no-op). */
+  removeEmptyRoom(roomId: string): void {
+    const room = this.rooms.get(roomId);
+    if (!room) return;
+    if (room.players.length > 0) return;
+    this.rooms.delete(roomId);
+    this.store.deleteRoom(roomId).catch(() => {});
+    logger.info(`Room ${roomId} dissolved (empty)`);
   }
 
   async deleteRoom(roomId: string): Promise<void> {

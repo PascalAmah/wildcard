@@ -100,11 +100,11 @@ export class GameEngine {
     this.state.activeColor = newActiveColor;
 
     // Process the effect queue
-    const prevIndex = this.state.currentPlayerIndex;
+    const didSkip = effectQueue.hasSkipStep();
     this.processEffectQueue(effectQueue);
 
-    // If the effect queue didn't advance the turn (no skip/draw+skip), advance normally
-    if (this.state.currentPlayerIndex === prevIndex) {
+    // If the effect queue didn't contain a skip step, advance to the next player
+    if (!didSkip) {
       this.state.currentPlayerIndex = getNextPlayerIndex(
         this.state.currentPlayerIndex,
         this.state.direction,
@@ -165,6 +165,45 @@ export class GameEngine {
       this.state.direction,
       this.state.players.length,
     );
+  }
+
+  /**
+   * Remove a player from the game mid-round.
+   * Deletes their hand, removes them from the player list, and adjusts
+   * currentPlayerIndex. If only one player remains, the round ends
+   * with that player as the winner.
+   *
+   * Returns a RoundOverResult if the round ends, or null if play continues.
+   */
+  removePlayer(playerId: string): RoundOverResult | null {
+    const removedIndex = this.state.players.findIndex((p) => p.id === playerId);
+    if (removedIndex === -1) return null;
+
+    // Delete their hand
+    delete this.state.hands[playerId];
+
+    // Remove from players list
+    this.state.players.splice(removedIndex, 1);
+
+    // Adjust currentPlayerIndex if it pointed past the removed player
+    if (this.state.currentPlayerIndex > removedIndex) {
+      this.state.currentPlayerIndex--;
+    } else if (this.state.currentPlayerIndex === removedIndex) {
+      // The removed player was the current player — wrap to the next player
+      if (this.state.currentPlayerIndex >= this.state.players.length) {
+        this.state.currentPlayerIndex = 0;
+      }
+    }
+
+    // If only one player remains, they win
+    if (this.state.players.length <= 1) {
+      const winnerId = this.state.players[0]?.id;
+      if (winnerId) {
+        return this.checkRoundOver(winnerId);
+      }
+    }
+
+    return null;
   }
 
   /**

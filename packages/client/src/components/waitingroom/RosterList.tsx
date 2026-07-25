@@ -14,6 +14,7 @@ interface RosterListProps {
   hostId: string;
   myPlayerId: string;
   isHost: boolean;
+  rejoinConfirmed: boolean;
   onToggleReady: () => void;
   onAddBot: () => void;
   onRemoveBot: (botId: string) => void;
@@ -33,6 +34,7 @@ export default function RosterList({
   hostId,
   myPlayerId,
   isHost,
+  rejoinConfirmed,
   onToggleReady,
   onAddBot,
   onRemoveBot,
@@ -41,7 +43,7 @@ export default function RosterList({
   const me = players.find((p) => p.id === myPlayerId);
   const amIReady = me?.isReady ?? false;
   const notReadyCount = players.filter((p) => !p.isReady && !p.isBot).length;
-  const canStart = isHost && notReadyCount === 0 && players.length >= 2;
+  const canStart = isHost && rejoinConfirmed && notReadyCount === 0 && players.length >= 2;
   const emptySlots = maxPlayers - players.length;
 
   return (
