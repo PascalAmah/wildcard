@@ -3,6 +3,7 @@ import { Room, type BroadcastFn } from "./Room.js";
 import { RoomStore } from "../store/roomStore.js";
 import { generateRoomCode } from "../utils/roomCode.js";
 import { logger } from "../utils/logger.js";
+import type { BotScheduler } from "../bots/BotScheduler.js";
 
 export type RoomBroadcastFn = (
   roomId: string,
@@ -15,10 +16,12 @@ export class RoomManager {
   private rooms: Map<string, Room> = new Map();
   private store: RoomStore;
   private broadcast: RoomBroadcastFn;
+  private botScheduler: BotScheduler | null;
 
-  constructor(broadcast: RoomBroadcastFn) {
+  constructor(broadcast: RoomBroadcastFn, botScheduler?: BotScheduler) {
     this.store = new RoomStore();
     this.broadcast = broadcast;
+    this.botScheduler = botScheduler ?? null;
   }
 
   getRoom(roomId: string): Room | undefined {
@@ -124,12 +127,8 @@ export class RoomManager {
     if (!room) return;
 
     room.removePlayer(playerId);
-
-    if (room.players.length === 0) {
-      this.rooms.delete(roomId);
-      this.store.deleteRoom(roomId).catch(() => {});
-      logger.info(`Room ${roomId} deleted (empty)`);
-    }
+    // If the room is now empty, onEmpty → removeEmptyRoom handles
+    // cleanup (map removal, bot detach, store deletion).
   }
 
   /** Delete an empty room. Safe to call on non-empty rooms (no-op). */
@@ -138,12 +137,14 @@ export class RoomManager {
     if (!room) return;
     if (room.players.length > 0) return;
     this.rooms.delete(roomId);
+    this.botScheduler?.detach(roomId);
     this.store.deleteRoom(roomId).catch(() => {});
     logger.info(`Room ${roomId} dissolved (empty)`);
   }
 
   async deleteRoom(roomId: string): Promise<void> {
     this.rooms.delete(roomId);
+    this.botScheduler?.detach(roomId);
     await this.store.deleteRoom(roomId);
   }
 }

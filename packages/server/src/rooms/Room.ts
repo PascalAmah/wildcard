@@ -24,7 +24,6 @@ export class Room {
   private data: RoomData;
   private engine: GameEngine | null = null;
   private turnTimer: ReturnType<typeof setTimeout> | null = null;
-  private hasDrawnThisTurn = false; // tracks whether the current player has drawn
 
   // Called by BotScheduler after a short delay when it's a bot's turn
   onBotTurn?: () => void;
@@ -231,7 +230,6 @@ export class Room {
     }
 
     const result = this.engine.playCard(playerId, cardId, chosenColor);
-    this.hasDrawnThisTurn = false;
     this.persist();
 
     if (result) {
@@ -260,7 +258,6 @@ export class Room {
     }
 
     this.engine.drawCard(playerId);
-    this.hasDrawnThisTurn = false;
     this.persist();
     this.broadcastGameState();
 
@@ -279,7 +276,6 @@ export class Room {
     }
 
     this.engine.passTurn(playerId);
-    this.hasDrawnThisTurn = false;
     this.persist();
     this.broadcastGameState();
     this.scheduleTurn();
@@ -310,7 +306,6 @@ export class Room {
     );
 
     this.data.status = "IN_PROGRESS";
-    this.hasDrawnThisTurn = false;
     this.persist();
 
     // Broadcast initial game state to all players
@@ -344,7 +339,6 @@ export class Room {
 
     // Remove from the room's player list (reassigns host if needed)
     this.removePlayer(playerId);
-    this.hasDrawnThisTurn = false;
     this.clearTurnTimer();
     this.persist();
 
@@ -413,7 +407,6 @@ export class Room {
 
       logger.info(`Turn timeout for player ${cp.name} in room ${this.roomId}`);
       this.engine.onTurnTimeout(cp.id);
-      this.hasDrawnThisTurn = false;
       this.persist();
       this.broadcast("game:event", {
         type: "TIMEOUT",
@@ -469,7 +462,6 @@ export class Room {
     const room = new Room(data, store, broadcast);
 
     if (data.gameState && data.status !== "WAITING") {
-      // Rebuild the engine from the serialized state
       const players: Player[] = data.players.map((p) => ({
         id: p.id,
         name: p.name,
@@ -483,12 +475,9 @@ export class Room {
         data.maxPlayers,
       );
 
-      // Restore state by mutating the engine's internal state
-      // The GameEngine doesn't expose a restore method, so we work with what we have
-      // For now, the engine is re-initialized with the persisted GameState
-      // by replacing the internal state manually
-      const state = room.engine.getState();
-      Object.assign(state, data.gameState);
+      // Properly restore the full engine state from persisted data.
+      // Uses a JSON round-trip for a deep copy — same format Redis stored it in.
+      room.engine.restoreState(data.gameState);
     }
 
     return room;

@@ -168,6 +168,19 @@ export class GameEngine {
   }
 
   /**
+   * Restore the engine's full internal state from a previously serialized
+   * GameState (e.g. after a server restart and Redis rehydration).
+   *
+   * Uses a JSON round-trip for a proper deep copy, matching exactly how
+   * the state was serialized through the Redis store. This is safer than
+   * Object.assign because it won't share references with the persisted
+   * object and handles any future nested fields correctly.
+   */
+  restoreState(state: GameState): void {
+    this.state = JSON.parse(JSON.stringify(state));
+  }
+
+  /**
    * Remove a player from the game mid-round.
    * Deletes their hand, removes them from the player list, and adjusts
    * currentPlayerIndex. If only one player remains, the round ends
