@@ -93,12 +93,13 @@ describe("GameEngine", () => {
         const hand = state.hands["0"];
         const topCard = state.discardPile[state.discardPile.length - 1];
 
+        // In a 2-player game, all action cards (Skip, Reverse, Draw Two)
+        // keep the turn with the current player. Only NUMBER and WILD cards
+        // actually advance. Find a NUMBER card to reliably test turn advancement.
         const nonWild = hand.find(
           (c) =>
-            canPlay(c, topCard, state.activeColor) &&
-            c.type !== "WILD" &&
-            c.type !== "WILD_DRAW_FOUR" &&
-            c.type !== "REVERSE", // 2-player reverse acts as skip, doesn't advance turn
+            c.type === "NUMBER" &&
+            canPlay(c, topCard, state.activeColor),
         );
 
         if (nonWild) {

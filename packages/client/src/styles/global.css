@@ -76,6 +76,13 @@ body {
   }
 }
 
+/* Turn badge pulse — fires when turn changes */
+@keyframes turnPulse {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.12); }
+  100% { transform: scale(1); }
+}
+
 /* Card shake animation (used by Hand for illegal moves) */
 @keyframes cardShake {
   0%,

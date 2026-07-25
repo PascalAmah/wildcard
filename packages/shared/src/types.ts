@@ -99,7 +99,8 @@ export type ErrorCode =
   | "ROOM_FULL"
   | "ROOM_IN_PROGRESS"
   | "ILLEGAL_MOVE"
-  | "NOT_YOUR_TURN";
+  | "NOT_YOUR_TURN"
+  | "RATE_LIMITED";
 
 export interface ErrorPayload {
   code: ErrorCode;

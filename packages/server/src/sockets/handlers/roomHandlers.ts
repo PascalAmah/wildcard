@@ -75,8 +75,9 @@ export function registerRoomHandlers(
   socket.on("room:rejoin", async (payload, ack) => {
     try {
       const { roomCode, playerId } = payload;
-      // Rejoin an existing game: look up the room, verify the player is in it
-      const room = roomManager.getRoom(roomCode);
+      // Rejoin an existing game: look up the room (with Redis fallback),
+      // verify the player is still in it.
+      const room = await roomManager.getOrRestoreRoom(roomCode);
       if (!room) {
         ack?.({ success: false, code: "ROOM_NOT_FOUND", error: "Room not found" });
         return;

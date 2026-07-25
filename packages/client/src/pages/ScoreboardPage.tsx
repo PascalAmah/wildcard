@@ -71,7 +71,7 @@ export default function ScoreboardPage() {
       .sort((a, b) => {
         if (a.isWinner) return -1;
         if (b.isWinner) return 1;
-        return b.score - a.score;
+        return a.cardsLeft - b.cardsLeft;
       });
   }
 
@@ -197,14 +197,14 @@ export default function ScoreboardPage() {
 
   return (
     <div
-      className="h-full overflow-auto flex items-center justify-center p-6"
+      className="h-full overflow-auto pt-5 pb-8 px-6"
       style={{
         background:
           "radial-gradient(1000px 600px at 50% -6%, rgba(52,199,123,0.16) 0%, transparent 60%), var(--bg)",
         color: "var(--ink)",
       }}
     >
-      <div className="w-full max-w-[560px]">
+      <div className="w-full max-w-[560px] mx-auto">
         {/* Winner banner */}
         <div className="text-center mb-7">
           <div

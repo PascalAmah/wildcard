@@ -34,12 +34,11 @@ export function createSocketServer(
 
     socket.on("disconnect", (reason) => {
       logger.info(`Socket disconnected: ${socket.id} (${reason})`);
-      // Reconnect grace period is handled by the client reconnecting
-      // and re-emitting room:join with the same playerId.
-      // For now, we don't immediately remove the player — the Room
-      // keeps their seat. If they don't reconnect within the grace
-      // period (60s per the design), the client won't rejoin.
-      // The server doesn't auto-remove players on disconnect.
+    });
+
+    // Simple ping/pong for client-side latency measurement
+    socket.on("ping", () => {
+      socket.emit("pong");
     });
 
     // Store room/player info on the socket data

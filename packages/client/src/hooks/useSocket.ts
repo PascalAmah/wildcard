@@ -54,9 +54,22 @@ export function useSocket() {
     socket.io.on("reconnect_attempt", onReconnectAttempt);
     socket.io.on("reconnect_failed", onReconnectFailed);
 
-    // Open the connection if not already open
+    // Open the connection if not already open.
+    // Deferred one tick so all other useEffect listeners (e.g. useGameState's
+    // game:state handler) are registered before the connect event fires and
+    // the room:rejoin response arrives. Without this, a synchronous WebSocket
+    // connection causes the server's game:state to be emitted before the
+    // client has set up the listener, silently dropping the event.
     if (!socket.connected) {
-      socket.connect();
+      const id = setTimeout(() => socket.connect(), 0);
+      return () => {
+        clearTimeout(id);
+        socket.off("connect", onConnect);
+        socket.off("disconnect", onDisconnect);
+        socket.off("connect_error", onConnectError);
+        socket.io.off("reconnect_attempt", onReconnectAttempt);
+        socket.io.off("reconnect_failed", onReconnectFailed);
+      };
     }
 
     return () => {

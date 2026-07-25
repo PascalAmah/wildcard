@@ -229,7 +229,23 @@ export class Room {
       throw new Error("Game not in progress");
     }
 
-    const result = this.engine.playCard(playerId, cardId, chosenColor);
+    let result: RoundOverResult | null;
+    try {
+      result = this.engine.playCard(playerId, cardId, chosenColor);
+    } catch (err) {
+      const msg = (err as Error).message;
+      // Silently ignore duplicate emits — if the card is already on top of
+      // the discard pile, the first emit already processed it successfully.
+      if (msg === "Card not found in hand") {
+        const state = this.engine.getState();
+        const topCard = state.discardPile[state.discardPile.length - 1];
+        if (topCard && topCard.id === cardId) {
+          return null;
+        }
+      }
+      throw err;
+    }
+
     this.persist();
 
     if (result) {

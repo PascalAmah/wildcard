@@ -71,6 +71,9 @@ export function shuffle<T>(array: T[]): T[] {
  * Draw the top card from the draw pile.
  * If the draw pile is empty, reshuffle the discard pile (except the top card)
  * into a fresh draw pile and continue.
+ *
+ * Throws DECK_EXHAUSTED if every card in the game is in players' hands
+ * and neither pile has anything left to draw.
  */
 export function drawFromPile(
   drawPile: Card[],
@@ -80,6 +83,10 @@ export function drawFromPile(
   let newDiscardPile = [...discardPile];
 
   if (newDrawPile.length === 0) {
+    if (newDiscardPile.length <= 1) {
+      // Nothing left to reshuffle — all cards are in players' hands
+      throw new Error("DECK_EXHAUSTED");
+    }
     const top = newDiscardPile.pop()!;
     newDrawPile = shuffle(newDiscardPile);
     newDiscardPile = [top];

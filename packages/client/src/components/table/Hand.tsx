@@ -41,8 +41,6 @@ function cardInlineStyle(
   total: number,
 ): React.CSSProperties {
   return {
-    marginLeft: idx === 0 ? "0" : "-14px",
-    zIndex: idx,
     borderColor: isWildCard(card)
       ? "rgba(255,255,255,0.4)"
       : "var(--card-border)",
@@ -65,6 +63,10 @@ interface HandProps {
   onToast?: (msg: Omit<ToastMessage, "id">) => void;
   /** Ref to the discard pile's card element — target for fly-to animation. */
   discardPileEl: HTMLElement | null;
+  /** Ref to the draw pile's top card element — origin for draw fly-from animation. */
+  drawPileEl: HTMLElement | null;
+  /** When set, restores this card's visibility — server rejected the play. */
+  rejectedCardId?: string | null;
 }
 
 export default function Hand({
@@ -76,6 +78,8 @@ export default function Hand({
   onIllegalPlay,
   onToast,
   discardPileEl,
+  drawPileEl,
+  rejectedCardId,
 }: HandProps) {
   const handRef = useRef<HTMLDivElement>(null);
   const shakeTargets = useRef<Map<string, HTMLElement>>(new Map());
@@ -150,17 +154,53 @@ export default function Hand({
       });
     }
 
-    // Animate newly-arrived cards: rise-and-fade (same as mockup)
-    for (const id of newCardIds) {
+    // Animate newly-arrived cards
+    // Single new card + draw pile ref = draw → fly from draw pile.
+    // Multiple new cards = initial deal → rise-and-fade.
+    const isDraw = newCardIds.size === 1 && drawPileEl;
+
+    if (isDraw) {
+      const id = [...newCardIds][0];
       const el = cardEls.current.get(id);
       if (el) {
+        const drawRect = drawPileEl!.getBoundingClientRect();
+        const cardRect = el.getBoundingClientRect();
+        const dx = drawRect.left + drawRect.width / 2 - (cardRect.left + cardRect.width / 2);
+        const dy = drawRect.top + drawRect.height / 2 - (cardRect.top + cardRect.height / 2);
+
         const finalTransform = el.style.transform;
-        const fromTransform = "translateY(20px)" + (finalTransform ? " " + finalTransform : "");
         gsap.fromTo(
           el,
-          { transform: fromTransform, opacity: 0 },
-          { transform: finalTransform || "none", opacity: 1, duration: 0.3, ease: easeOut },
+          {
+            x: dx,
+            y: dy,
+            scale: 0.5,
+            opacity: 0,
+            transform: `translate(${dx}px, ${dy}px) scale(0.5)`,
+          },
+          {
+            x: 0,
+            y: 0,
+            scale: 1,
+            opacity: 1,
+            transform: finalTransform || "none",
+            duration: flightDuration,
+            ease: easeOut,
+          },
         );
+      }
+    } else {
+      for (const id of newCardIds) {
+        const el = cardEls.current.get(id);
+        if (el) {
+          const finalTransform = el.style.transform;
+          const fromTransform = "translateY(20px)" + (finalTransform ? " " + finalTransform : "");
+          gsap.fromTo(
+            el,
+            { transform: fromTransform, opacity: 0 },
+            { transform: finalTransform || "none", opacity: 1, duration: 0.3, ease: easeOut },
+          );
+        }
       }
     }
   }, [cardsKey]);
@@ -168,6 +208,17 @@ export default function Hand({
   useEffect(() => {
     prevCardIds.current = new Set(cards.map((c) => c.id));
   }, [cards]);
+
+  // Restore a card's visibility when the server rejects the play.
+  // The card was dimmed by the fly animation; rejection means no
+  // game:state was sent, so the element is still in the DOM at 0.3 opacity.
+  useEffect(() => {
+    if (!rejectedCardId || isReducedMotion()) return;
+    const el = cardEls.current.get(rejectedCardId);
+    if (el) {
+      gsap.to(el, { opacity: 1, scale: 1, duration: 0.2, ease: "power2.out" });
+    }
+  }, [rejectedCardId]);
 
   // ---- Fly-to-discard animation ----
   const flyCardToDiscardPile = useCallback(
@@ -199,8 +250,12 @@ export default function Hand({
       clone.style.margin = "0";
       document.body.appendChild(clone);
 
-      // Hide the source card instantly
-      gsap.set(sourceEl, { opacity: 0, scale: 0.95 });
+      // Dim the source card during flight — don't fully hide it.
+      // If the server rejects the play (NOT_YOUR_TURN, ILLEGAL_MOVE),
+      // the card stays in the array and we restore it via rejectedCardId.
+      // If the server confirms, the card is naturally removed from the
+      // array on the next game:state and the element disappears.
+      gsap.set(sourceEl, { opacity: 0.3, scale: 0.95 });
 
       // Build the flight timeline
       const tl = gsap.timeline({
@@ -297,7 +352,7 @@ export default function Hand({
 
       <div
         ref={handRef}
-        className="overflow-x-auto overflow-y-visible scrollbar-none pt-3 pb-5"
+        className="overflow-x-auto overflow-y-visible scrollbar-none pt-11 pb-5"
       >
         {total === 0 ? (
           <div className="flex items-center justify-center h-[130px] text-[var(--ink-dim)] text-[14px]">
@@ -319,13 +374,21 @@ export default function Hand({
               return (
                 <div
                   key={card.id}
+                  className={`flex-shrink-0 transition-transform duration-200 ease-out ${
+                    isClickable
+                      ? "-translate-y-3.5 hover:-translate-y-[28px] hover:z-10"
+                      : ""
+                  }`}
+                  style={{ marginLeft: idx === 0 ? "0" : "-14px", zIndex: idx }}
+                >
+                <div
                   ref={(el) => registerCard(card.id, el)}
                   data-card-id={card.id}
-                  className={`hcard relative flex-shrink-0 w-[60px] h-[88px] sm:w-[72px] sm:h-[105px] rounded-xl border-2 flex flex-col items-center justify-center select-none transition-shadow duration-150 ${
+                  className={`hcard relative w-[60px] h-[88px] sm:w-[72px] sm:h-[105px] rounded-xl border-2 flex flex-col items-center justify-center select-none transition-all duration-200 ease-out ${
                     isClickable
-                      ? "cursor-pointer hover:shadow-[0_0_16px_rgba(255,255,255,0.2)] hover:-translate-y-3"
-                      : "cursor-default"
-                  } ${isLegal && isMyTurn ? "hover:-translate-y-3" : ""}`}
+                      ? "cursor-pointer shadow-[0_4px_0_rgba(0,0,0,0.15),0_14px_26px_-8px_rgba(0,0,0,0.55),0_0_0_2px_rgba(255,255,255,0.35)] hover:shadow-[0_20px_34px_-8px_rgba(0,0,0,0.6),0_0_0_2px_rgba(255,255,255,0.35)]"
+                      : "cursor-not-allowed opacity-40"
+                  }`}
                   style={cardInlineStyle(card, idx, total)}
                   onClick={() => handleCardClick(card)}
                 >
@@ -353,6 +416,7 @@ export default function Hand({
                       ★
                     </span>
                   )}
+                </div>
                 </div>
               );
             })}
@@ -401,7 +465,7 @@ export function executeFlyToDiscard(
   clone.style.margin = "0";
   document.body.appendChild(clone);
 
-  gsap.set(sourceEl, { opacity: 0, scale: 0.95 });
+  gsap.set(sourceEl, { opacity: 0.3, scale: 0.95 });
 
   const tl = gsap.timeline({ onComplete: () => { clone.remove(); onComplete(); } });
 
