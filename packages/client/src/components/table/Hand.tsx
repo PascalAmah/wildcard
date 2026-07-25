@@ -374,12 +374,13 @@ export default function Hand({
               return (
                 <div
                   key={card.id}
-                  className={`flex-shrink-0 transition-transform duration-200 ease-out ${
-                    isClickable
-                      ? "-translate-y-3.5 hover:-translate-y-[28px] hover:z-10"
-                      : ""
-                  }`}
-                  style={{ marginLeft: idx === 0 ? "0" : "-14px", zIndex: idx }}
+                  className="flex-shrink-0"
+                  style={{
+                    marginLeft: idx === 0 ? "0" : "-14px",
+                    zIndex: idx,
+                    transform: isClickable ? "translateY(-14px)" : "none",
+                    transition: "transform 200ms ease-out",
+                  }}
                 >
                 <div
                   ref={(el) => registerCard(card.id, el)}
