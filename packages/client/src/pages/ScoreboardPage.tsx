@@ -14,9 +14,30 @@ interface ScoreboardEntry {
 }
 
 const AVATAR_COLORS = ["#f2b341", "#4c6ef5", "#ef5b68", "#34c77b"];
+const STORAGE_KEY = "wildcard_round_result";
 
 function initials(name: string): string {
   return name.trim()[0].toUpperCase();
+}
+
+interface RoundResultData {
+  winnerId: string;
+  scores: Record<string, number>;
+  handCounts: Record<string, number>;
+  players: Array<{ id: string; name: string; isBot: boolean; handCount: number }>;
+}
+
+function getStoredRoundResult(): RoundResultData | null {
+  try {
+    const raw = sessionStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function clearStoredRoundResult(): void {
+  sessionStorage.removeItem(STORAGE_KEY);
 }
 
 export default function ScoreboardPage() {
@@ -24,58 +45,75 @@ export default function ScoreboardPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { dispatch } = useGameState();
-  const locationState = location.state as {
-    winnerId: string;
-    scores: Record<string, number>;
-    handCounts: Record<string, number>;
-    players: Array<{ id: string; name: string; isBot: boolean; handCount: number }>;
-  } | null;
+  const locationState = location.state as RoundResultData | null;
+  const storedResult = !locationState ? getStoredRoundResult() : null;
   const [entries, setEntries] = useState<ScoreboardEntry[]>([]);
   const [isHost, setIsHost] = useState(false);
+  const [playerCount, setPlayerCount] = useState(0);
   const [rematching, setRematching] = useState(false);
   const [leaving, setLeaving] = useState(false);
+  const [loading, setLoading] = useState(!locationState && !storedResult);
   const confettiFired = useRef(false);
 
-  // Build scoreboard entries immediately from the navigation state — no
-  // need to wait for a server round-trip. Player names are already in the
-  // ClientView passed from the TablePage.
-  useEffect(() => {
-    if (!locationState) return;
-
-    const sorted = locationState.players
+  function buildEntries(data: RoundResultData): ScoreboardEntry[] {
+    return data.players
       .map((p) => {
-        const isWinner = p.id === locationState.winnerId;
+        const isWinner = p.id === data.winnerId;
         return {
           playerId: p.id,
           name: p.name,
           isYou: p.id === socket.id || p.id === getStoredPlayerId(),
-          cardsLeft: (locationState.handCounts?.[p.id]) ?? (isWinner ? 0 : 1),
-          score: locationState.scores[p.id] ?? 0,
+          cardsLeft: data.handCounts?.[p.id] ?? (isWinner ? 0 : 1),
+          score: data.scores[p.id] ?? 0,
           isWinner,
         };
       })
       .sort((a, b) => {
-        // Winner first, then by score descending
         if (a.isWinner) return -1;
         if (b.isWinner) return 1;
         return b.score - a.score;
       });
+  }
 
+  // Build entries from navigation state or sessionStorage
+  useEffect(() => {
+    const source = locationState ?? storedResult;
+    if (!source) return;
+
+    const sorted = buildEntries(source);
     setEntries(sorted);
+    setLoading(false);
   }, [locationState]);
 
-  // Determine if this player is the host (needs a server round-trip)
+  // Determine if this player is the host. On page refresh, the socket
+  // reconnects via room:rejoin which now always sends room:state with hostId.
+  // We retry a few times to handle any edge cases with async rejoin timing.
   useEffect(() => {
     if (!roomId) return;
 
-    socket.emit("room:requestState");
+    const storedId = getStoredPlayerId();
+    let retries = 0;
+    const maxRetries = 4;
 
-    function onRoomState(data: { hostId: string }) {
-      setIsHost(data.hostId === socket.id || data.hostId === getStoredPlayerId());
+    function onRoomState(data: { hostId: string; players: Array<unknown> }) {
+      setIsHost(data.hostId === storedId);
+      setPlayerCount(data.players.length);
     }
 
     socket.on("room:state", onRoomState);
+
+    function poll() {
+      socket.emit("room:requestState");
+      if (retries < maxRetries) {
+        retries++;
+        setTimeout(poll, 400);
+      }
+    }
+
+    poll();
+
     return () => {
+      retries = maxRetries;
       socket.off("room:state", onRoomState);
     };
   }, [roomId]);
@@ -108,7 +146,7 @@ export default function ScoreboardPage() {
   useEffect(() => {
     function onRematch() {
       setRematching(false);
-      navigate(`/table/${roomId}`, { replace: true });
+      navigate(`/table/${roomId}`, { replace: true, state: { fromRematch: true } });
     }
 
     socket.on("game:rematch", onRematch);
@@ -129,12 +167,33 @@ export default function ScoreboardPage() {
     // Clear stored room/player so the app doesn't try to rejoin on next visit
     persistRoomCode(null);
     persistPlayerId(null);
+    clearStoredRoundResult();
     // Reset game state back to landing so the lobby doesn't auto-redirect
     dispatch({ type: "GO_TO_LANDING" });
     navigate("/", { replace: true });
   }, [navigate, leaving, dispatch]);
 
   const winner = entries.find((e) => e.isWinner);
+  // Use the server-reported player count to determine if rematch is possible.
+  // When a player leaves mid-game, entries may still show 2 players from
+  // cached state, but the server's room:state has the updated count.
+  const actualPlayerCount = playerCount > 0 ? playerCount : entries.length;
+  const canRematch = isHost && actualPlayerCount >= 2;
+
+  if (loading) {
+    return (
+      <div
+        className="h-full flex items-center justify-center"
+        style={{ background: "var(--bg)" }}
+      >
+        <div className="flex flex-col items-center gap-3">
+          <span className="text-[14px] font-semibold text-[var(--ink-dim)]">
+            Loading results…
+          </span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -231,7 +290,7 @@ export default function ScoreboardPage() {
                     color: entry.isWinner ? "var(--green)" : undefined,
                   }}
                 >
-                  {entry.isWinner ? "0" : `+${entry.score}`}
+                  +{entry.score}
                 </span>
               </div>
               {i < entries.length - 1 && (
@@ -256,7 +315,7 @@ export default function ScoreboardPage() {
             {leaving ? "Leaving…" : "Leave table"}
           </button>
 
-          {isHost ? (
+          {canRematch ? (
             <button
               onClick={handleRematch}
               disabled={rematching}
@@ -279,16 +338,20 @@ export default function ScoreboardPage() {
                 border: "1px solid var(--line)",
               }}
             >
-              Rematch → (host only)
+              {actualPlayerCount < 2 ? "Not enough players" : "Rematch → (host only)"}
             </button>
           )}
         </div>
 
-        {!isHost && (
+        {isHost && actualPlayerCount < 2 ? (
+          <div className="text-center text-[12px] mt-3.5" style={{ color: "var(--ink-dim)" }}>
+            Waiting for more players to join before rematch
+          </div>
+        ) : !isHost ? (
           <div className="text-center text-[12px] mt-3.5" style={{ color: "var(--ink-dim)" }}>
             Only the host can start a rematch — waiting on the host
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   );

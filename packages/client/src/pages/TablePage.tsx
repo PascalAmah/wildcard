@@ -16,6 +16,9 @@ import WildColorPicker from "../components/table/WildColorPicker";
 import ReconnectOverlay from "../components/table/ReconnectOverlay";
 import Toast from "../components/shared/Toast";
 import type { ToastMessage } from "../components/shared/Toast";
+import { persistRoomCode, persistPlayerId } from "../lib/socketClient";
+
+const ROUND_RESULT_KEY = "wildcard_round_result";
 
 // ---------- helpers ----------
 
@@ -37,7 +40,7 @@ interface DisconnectPayload {
 export default function TablePage() {
   const { roomId } = useParams<{ roomId: string }>();
   const navigate = useNavigate();
-  const { state } = useGameState();
+  const { state, dispatch } = useGameState();
 
   // ----- Derived state -----
   const view =
@@ -228,14 +231,19 @@ export default function TablePage() {
     if (state.screen === "roundOver" && lastViewRef.current) {
       const data = state as { screen: "roundOver"; winnerId: string; scores: Record<string, number>; handCounts: Record<string, number> };
       const players = lastViewRef.current.players;
+      const roundData = {
+        winnerId: data.winnerId,
+        scores: data.scores,
+        handCounts: data.handCounts,
+        players,
+      };
+      // Persist to sessionStorage so the scoreboard survives page refresh
+      try {
+        sessionStorage.setItem(ROUND_RESULT_KEY, JSON.stringify(roundData));
+      } catch { /* sessionStorage may be unavailable */ }
       setTimeout(() => {
         navigate(`/table/${roomId}/results`, {
-          state: {
-            winnerId: data.winnerId,
-            scores: data.scores,
-            handCounts: data.handCounts,
-            players,
-          },
+          state: roundData,
         });
       }, 2000);
     } else if (state.screen === "waiting" || state.screen === "lobby") {
@@ -263,14 +271,14 @@ export default function TablePage() {
     return () => clearTimeout(timer);
   }, [view, showLoader]);
 
-  // Auto-retry after 2s if view still isn't available
+  // Auto-retry if view still isn't available
   useEffect(() => {
     if (view || !roomId || !showLoader) return;
     const timer = setTimeout(() => {
       socket.emit("room:requestState");
       mountedAt.current = Date.now();
       setLoaderKey((k) => k + 1);
-    }, LOAD_DURATION_MS + 400);
+    }, LOAD_DURATION_MS + 300);
     return () => clearTimeout(timer);
   }, [view, roomId, showLoader]);
 
@@ -333,14 +341,38 @@ export default function TablePage() {
     );
   }
 
-  // Guard: if showLoader is false but view is still null (shouldn't happen),
-  // render nothing. This also narrows view's type for TypeScript.
+  // Guard: if we're transitioning to round-over (player left mid-game),
+  // don't render the game table — the redirect effect will navigate to
+  // the scoreboard shortly.
+  if (state.screen === "roundOver") {
+    return (
+      <div
+        className="h-full flex items-center justify-center"
+        style={{ background: "var(--bg)" }}
+      >
+        <div className="flex flex-col items-center gap-3">
+          <span className="text-[14px] font-semibold text-[var(--ink-dim)]">
+            Round over…
+          </span>
+        </div>
+      </div>
+    );
+  }
+
   if (!view) return null;
 
   const isMyTurn =
     view.currentPlayerIndex === view.players.findIndex((p) => p.id === myPlayerId);
   const topCard = view.topCard;
   const discardCardEl = discardPileRef.current?.cardEl ?? null;
+
+  function handleLeave() {
+    socket.emit("room:leave");
+    persistRoomCode(null);
+    persistPlayerId(null);
+    dispatch({ type: "GO_TO_LANDING" });
+    navigate("/", { replace: true });
+  }
 
   return (
     <div
@@ -353,6 +385,23 @@ export default function TablePage() {
         className="absolute top-[-200px] left-1/2 -translate-x-1/2 w-[600px] h-[600px] rounded-full opacity-20 blur-3xl pointer-events-none"
         style={{ background: "var(--bg-glow-1)" }}
       />
+
+      {/* Top bar with room code and leave button */}
+      <div className="relative z-10 w-full max-w-[800px] flex items-center justify-between">
+        <div className="flex items-center gap-2 text-[13px] font-semibold text-[var(--ink-dim)]">
+          <span className="w-[6px] h-[6px] rounded-full bg-[var(--green)]" />
+          Table <b className="text-[var(--ink)]">{roomId}</b>
+          <span className="text-[var(--line)] mx-1">·</span>
+          {view.players.length} player{view.players.length !== 1 ? "s" : ""}
+        </div>
+
+        <button
+          onClick={handleLeave}
+          className="text-[12px] font-semibold text-[var(--ink-dim)] bg-transparent border border-[var(--line)] rounded-lg px-3 py-1 cursor-pointer hover:text-[var(--red)] hover:border-[var(--red)] transition-colors duration-200"
+        >
+          Leave
+        </button>
+      </div>
 
       {/* Opponents row */}
       <div className="relative z-10 w-full max-w-[800px]">
@@ -373,13 +422,19 @@ export default function TablePage() {
         />
       </div>
 
-      {/* Turn info */}
-      <div className="relative z-10 flex flex-col items-center gap-3">
-        <div className="text-[12px] font-semibold text-[var(--ink-dim)]">
+      {/* Turn info and direction */}
+      <div className="relative z-10 flex flex-col items-center gap-2">
+        <span
+          className={`text-[13px] font-bold px-5 py-1.5 rounded-full transition-all duration-300 ${
+            isMyTurn
+              ? "bg-[var(--accent)] text-white shadow-[0_0_14px_var(--accent)]"
+              : "bg-[var(--panel-2)] text-[var(--ink-dim)] border border-[var(--line)]"
+          }`}
+        >
           {isMyTurn
             ? "Your turn"
-            : `Waiting for ${view.players[view.currentPlayerIndex]?.name ?? "opponent"}…`}
-        </div>
+            : `${view.players[view.currentPlayerIndex]?.name ?? "Opponent"}'s turn`}
+        </span>
 
         <div className="text-[11px] text-[var(--ink-dim)]">
           {view.direction === 1 ? "\u2192 Clockwise" : "\u2190 Counter-clockwise"}
@@ -405,7 +460,10 @@ export default function TablePage() {
 
       {/* Wild color picker */}
       {pendingWildCardId && (
-        <WildColorPicker onChooseColor={handleWildColorChosen} />
+        <WildColorPicker
+          onChooseColor={handleWildColorChosen}
+          onCancel={() => setPendingWildCardId(null)}
+        />
       )}
 
       {/* Reconnect overlay */}

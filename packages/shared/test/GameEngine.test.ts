@@ -97,7 +97,8 @@ describe("GameEngine", () => {
           (c) =>
             canPlay(c, topCard, state.activeColor) &&
             c.type !== "WILD" &&
-            c.type !== "WILD_DRAW_FOUR",
+            c.type !== "WILD_DRAW_FOUR" &&
+            c.type !== "REVERSE", // 2-player reverse acts as skip, doesn't advance turn
         );
 
         if (nonWild) {

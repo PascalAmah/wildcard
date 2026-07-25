@@ -82,11 +82,9 @@ export default function DrawPile({ drawPileCount, onDraw, canDraw }: DrawPilePro
       </div>
 
       {/* Count label */}
-      {drawPileCount > 0 && (
-        <span className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-[12px] font-semibold text-[var(--ink-dim)] whitespace-nowrap">
-          {drawPileCount}
-        </span>
-      )}
+      <span className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-[12px] font-semibold text-[var(--ink-dim)] whitespace-nowrap">
+        Draw · {drawPileCount} left
+      </span>
     </div>
   );
 }

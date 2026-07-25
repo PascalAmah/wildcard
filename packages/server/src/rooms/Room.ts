@@ -1,6 +1,7 @@
 import { GameEngine } from "@wildcard/shared";
 import type {
   CardColor,
+  ClientView,
   GameState,
   Player,
   RoundOverResult,
@@ -23,10 +24,12 @@ export class Room {
   private data: RoomData;
   private engine: GameEngine | null = null;
   private turnTimer: ReturnType<typeof setTimeout> | null = null;
-  private hasDrawnThisTurn = false; // tracks whether the current player has drawn
 
   // Called by BotScheduler after a short delay when it's a bot's turn
   onBotTurn?: () => void;
+
+  // Called when the last player leaves (room becomes empty)
+  onEmpty?: () => void;
 
   // Server-side 60s grace period timers — one per disconnected player
   private disconnectTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
@@ -105,6 +108,10 @@ export class Room {
       this.data.hostId = this.data.players[0].id;
     }
     this.persist();
+
+    if (this.data.players.length === 0) {
+      this.onEmpty?.();
+    }
   }
 
   /**
@@ -123,19 +130,18 @@ export class Room {
       );
 
       if (this.data.status === "IN_PROGRESS") {
-        // Use playWithout to safely remove a mid-game player (advances turn if needed)
         this.playWithout(playerId);
       } else if (this.data.status === "WAITING" || this.data.status === "ROUND_OVER") {
         this.removePlayer(playerId);
-      }
 
-      // Notify remaining clients that the player has been removed
-      this.broadcast("player:reconnected", {
-        playerId,
-        playerName: player.name,
-        removed: true,
-      });
-    }, 60_000);
+        // Notify remaining clients that the player has been removed
+        this.broadcast("player:reconnected", {
+          playerId,
+          playerName: player.name,
+          removed: true,
+        });
+      }
+    }, 30_000);
     this.disconnectTimers.set(playerId, timer);
   }
 
@@ -224,7 +230,6 @@ export class Room {
     }
 
     const result = this.engine.playCard(playerId, cardId, chosenColor);
-    this.hasDrawnThisTurn = false;
     this.persist();
 
     if (result) {
@@ -234,6 +239,10 @@ export class Room {
       this.persist();
       this.clearTurnTimer();
       this.broadcast("game:roundOver", result);
+      // Don't broadcast game:state after round over — the round-over
+      // event is sufficient and prevents the client from flipping back
+      // to the "playing" screen.
+      return result;
     }
 
     this.broadcastGameState();
@@ -249,7 +258,6 @@ export class Room {
     }
 
     this.engine.drawCard(playerId);
-    this.hasDrawnThisTurn = false;
     this.persist();
     this.broadcastGameState();
 
@@ -268,7 +276,6 @@ export class Room {
     }
 
     this.engine.passTurn(playerId);
-    this.hasDrawnThisTurn = false;
     this.persist();
     this.broadcastGameState();
     this.scheduleTurn();
@@ -299,7 +306,6 @@ export class Room {
     );
 
     this.data.status = "IN_PROGRESS";
-    this.hasDrawnThisTurn = false;
     this.persist();
 
     // Broadcast initial game state to all players
@@ -315,9 +321,9 @@ export class Room {
   // ---- Play without disconnected player ----
 
   /**
-   * Remove a disconnected player from an in-progress game so the
-   * remaining players can continue. If the removed player is the
-   * current player, advances the turn to the next player.
+   * Remove a player from the game mid-round (disconnect timeout or host vote).
+   * Removes them from the engine and the room's player list.
+   * If only one player remains, ends the round with them as winner.
    */
   playWithout(playerId: string): void {
     if (!this.engine) throw new Error("Game not started");
@@ -325,21 +331,56 @@ export class Room {
       throw new Error("Game not in progress");
     }
 
-    const state = this.engine.getState();
-    const removedIndex = state.players.findIndex((p) => p.id === playerId);
+    // Capture the player's name before removing them
+    const leavingPlayer = this.data.players.find((p) => p.id === playerId);
 
-    // If the removed player was the current player, advance turn first
-    if (removedIndex >= 0 && removedIndex === state.currentPlayerIndex) {
-      this.engine.passTurn(playerId);
-    }
+    // Remove from engine — returns RoundOverResult if only one player remains
+    const result = this.engine.removePlayer(playerId);
 
-    // Remove from the room's player list
+    // Remove from the room's player list (reassigns host if needed)
     this.removePlayer(playerId);
-    this.hasDrawnThisTurn = false;
     this.clearTurnTimer();
     this.persist();
-    this.broadcastGameState();
-    this.scheduleTurn();
+
+    if (result) {
+      // Only one player remains — round is over
+      this.data.status = "ROUND_OVER";
+      this.data.gameState = this.engine.getState();
+      this.persist();
+      this.broadcast("game:roundOver", result);
+    } else if (this.engine.getState().players.length <= 1) {
+      // Engine didn't detect round-over (edge case), end it manually
+      const winnerId = this.engine.getState().players[0]?.id;
+      if (winnerId) {
+        this.data.status = "ROUND_OVER";
+        this.data.gameState = this.engine.getState();
+        this.persist();
+        this.broadcast("game:roundOver", {
+          winnerId,
+          scores: { [winnerId]: 0 },
+          handCounts: { [winnerId]: 0 },
+        });
+      }
+    } else {
+      // Game continues with remaining players
+      this.broadcastGameState();
+      this.scheduleTurn();
+    }
+
+    // Notify remaining players
+    this.broadcast("player:reconnected", {
+      playerId,
+      playerName: playerId,
+      removed: true,
+    });
+
+    // Show a toast notification for remaining players
+    const name = leavingPlayer?.name ?? playerId;
+    this.broadcast("game:event", {
+      type: "PLAYER_LEFT",
+      actorId: playerId,
+      message: `${name} left the game`,
+    });
   }
 
   // ---- Turn timer ----
@@ -350,6 +391,7 @@ export class Room {
 
     const state = this.engine.getState();
     const currentPlayer = state.players[state.currentPlayerIndex];
+    if (!currentPlayer) return;
 
     if (currentPlayer.isBot) {
       // Let BotScheduler handle this
@@ -365,7 +407,6 @@ export class Room {
 
       logger.info(`Turn timeout for player ${cp.name} in room ${this.roomId}`);
       this.engine.onTurnTimeout(cp.id);
-      this.hasDrawnThisTurn = false;
       this.persist();
       this.broadcast("game:event", {
         type: "TIMEOUT",
@@ -410,12 +451,17 @@ export class Room {
     this.broadcast("game:state", view, [playerId]);
   }
 
+  /** Build a ClientView without broadcasting (used by rejoin to emit directly). */
+  getClientView(playerId: string): ClientView | null {
+    if (!this.engine) return null;
+    return this.engine.toClientView(playerId);
+  }
+
   /** Rebuild this Room from stored data (e.g. on server restart). */
   static fromData(data: RoomData, store: RoomStore, broadcast: BroadcastFn): Room {
     const room = new Room(data, store, broadcast);
 
     if (data.gameState && data.status !== "WAITING") {
-      // Rebuild the engine from the serialized state
       const players: Player[] = data.players.map((p) => ({
         id: p.id,
         name: p.name,
@@ -429,12 +475,9 @@ export class Room {
         data.maxPlayers,
       );
 
-      // Restore state by mutating the engine's internal state
-      // The GameEngine doesn't expose a restore method, so we work with what we have
-      // For now, the engine is re-initialized with the persisted GameState
-      // by replacing the internal state manually
-      const state = room.engine.getState();
-      Object.assign(state, data.gameState);
+      // Properly restore the full engine state from persisted data.
+      // Uses a JSON round-trip for a deep copy — same format Redis stored it in.
+      room.engine.restoreState(data.gameState);
     }
 
     return room;

@@ -64,13 +64,22 @@ export function emitToPlayer(
   data: unknown,
 ): void {
   if (playerId) {
-    // Find the socket for this player in this room
+    // First try: find the socket in the target room by playerId
     const room = io.sockets.adapter.rooms.get(roomId);
-    if (!room) return;
+    if (room) {
+      for (const socketId of room) {
+        const sock = io.sockets.sockets.get(socketId);
+        if (sock?.data?.playerId === playerId) {
+          sock.emit(event, data);
+          return;
+        }
+      }
+    }
 
-    for (const socketId of room) {
-      const sock = io.sockets.sockets.get(socketId);
-      if (sock?.data?.playerId === playerId) {
+    // Fallback: the socket might not be in the room yet (e.g. rejoin in
+    // progress). Search all connected sockets for the matching playerId.
+    for (const [, sock] of io.sockets.sockets) {
+      if (sock.data?.playerId === playerId) {
         sock.emit(event, data);
         return;
       }

@@ -17,7 +17,7 @@ export default function ReconnectOverlay({
 }: ReconnectOverlayProps) {
   if (!disconnectedPlayerId) return null;
 
-  const percentage = Math.max(0, Math.min(100, (countdown / 60) * 100));
+  const percentage = Math.max(0, Math.min(100, (countdown / 30) * 100));
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
