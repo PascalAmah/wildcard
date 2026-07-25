@@ -23,7 +23,7 @@ export function registerGameHandlers(
 ): void {
   socket.on("game:playCard", (payload, ack) => {
     if (!checkRateLimit(socket.id)) {
-      ack?.({ success: false, code: "RATE_LIMITED" as any, error: "Too fast" });
+      ack?.({ success: false, code: "RATE_LIMITED", error: "Too fast" });
       return;
     }
 
@@ -79,7 +79,7 @@ export function registerGameHandlers(
 
   socket.on("game:drawCard", (payload, ack) => {
     if (!checkRateLimit(socket.id)) {
-      ack?.({ success: false, code: "RATE_LIMITED" as any, error: "Too fast" });
+      ack?.({ success: false, code: "RATE_LIMITED", error: "Too fast" });
       return;
     }
 
@@ -115,7 +115,7 @@ export function registerGameHandlers(
 
   socket.on("game:passTurn", (payload, ack) => {
     if (!checkRateLimit(socket.id)) {
-      ack?.({ success: false, code: "RATE_LIMITED" as any, error: "Too fast" });
+      ack?.({ success: false, code: "RATE_LIMITED", error: "Too fast" });
       return;
     }
 
