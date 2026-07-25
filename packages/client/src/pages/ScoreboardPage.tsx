@@ -183,7 +183,7 @@ export default function ScoreboardPage() {
   if (loading) {
     return (
       <div
-        className="h-full flex items-center justify-center"
+        className="min-h-screen flex items-center justify-center"
         style={{ background: "var(--bg)" }}
       >
         <div className="flex flex-col items-center gap-3">
@@ -197,14 +197,14 @@ export default function ScoreboardPage() {
 
   return (
     <div
-      className="h-full overflow-auto pt-5 pb-8 px-6"
+      className="min-h-screen overflow-auto flex flex-col items-center p-6"
       style={{
         background:
           "radial-gradient(1000px 600px at 50% -6%, rgba(52,199,123,0.16) 0%, transparent 60%), var(--bg)",
         color: "var(--ink)",
       }}
     >
-      <div className="w-full max-w-[560px] mx-auto">
+      <div className="w-full max-w-[560px] my-auto">
         {/* Winner banner */}
         <div className="text-center mb-7">
           <div

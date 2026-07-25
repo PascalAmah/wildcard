@@ -121,25 +121,32 @@ export class Room {
   startDisconnectTimer(playerId: string): void {
     this.clearDisconnectTimer(playerId);
     const timer = setTimeout(() => {
-      this.disconnectTimers.delete(playerId);
-      const player = this.data.players.find((p) => p.id === playerId);
-      if (!player) return;
+      try {
+        this.disconnectTimers.delete(playerId);
+        const player = this.data.players.find((p) => p.id === playerId);
+        if (!player) return;
 
-      logger.info(
-        `Grace period expired for ${player.name} in room ${this.roomId} — removing seat`,
-      );
+        logger.info(
+          `Grace period expired for ${player.name} in room ${this.roomId} — removing seat`,
+        );
 
-      if (this.data.status === "IN_PROGRESS") {
-        this.playWithout(playerId);
-      } else if (this.data.status === "WAITING" || this.data.status === "ROUND_OVER") {
-        this.removePlayer(playerId);
+        if (this.data.status === "IN_PROGRESS") {
+          this.playWithout(playerId);
+        } else if (this.data.status === "WAITING" || this.data.status === "ROUND_OVER") {
+          this.removePlayer(playerId);
 
-        // Notify remaining clients that the player has been removed
-        this.broadcast("player:reconnected", {
-          playerId,
-          playerName: player.name,
-          removed: true,
-        });
+          // Notify remaining clients that the player has been removed
+          this.broadcast("player:reconnected", {
+            playerId,
+            playerName: player.name,
+            removed: true,
+          });
+        }
+      } catch (err) {
+        logger.error(
+          `Disconnect timer error in room ${this.roomId}:`,
+          (err as Error).message,
+        );
       }
     }, 30_000);
     this.disconnectTimers.set(playerId, timer);
@@ -416,21 +423,41 @@ export class Room {
     }
 
     this.turnTimer = setTimeout(() => {
-      if (!this.engine) return;
-      const s = this.engine.getState();
-      const cp = s.players[s.currentPlayerIndex];
-      if (!cp) return;
+      try {
+        if (!this.engine) return;
+        const s = this.engine.getState();
+        const cp = s.players[s.currentPlayerIndex];
+        if (!cp) return;
 
-      logger.info(`Turn timeout for player ${cp.name} in room ${this.roomId}`);
-      this.engine.onTurnTimeout(cp.id);
-      this.persist();
-      this.broadcast("game:event", {
-        type: "TIMEOUT",
-        actorId: cp.id,
-        message: `${cp.name} ran out of time — auto-draw`,
-      });
-      this.broadcastGameState();
-      this.scheduleTurn();
+        logger.info(`Turn timeout for player ${cp.name} in room ${this.roomId}`);
+        this.engine.onTurnTimeout(cp.id);
+        this.persist();
+        this.broadcast("game:event", {
+          type: "TIMEOUT",
+          actorId: cp.id,
+          message: `${cp.name} ran out of time — auto-draw`,
+        });
+        this.broadcastGameState();
+        this.scheduleTurn();
+      } catch (err) {
+        logger.error(
+          `Turn timeout error in room ${this.roomId}:`,
+          (err as Error).message,
+        );
+        // Attempt recovery: advance turn and keep the game alive
+        try {
+          if (this.engine) {
+            this.engine.onTurnTimeout(
+              this.engine.getState().players[this.engine.getState().currentPlayerIndex]?.id ?? "",
+            );
+            this.persist();
+            this.broadcastGameState();
+            this.scheduleTurn();
+          }
+        } catch {
+          logger.error(`Failed to recover from timeout error in room ${this.roomId}`);
+        }
+      }
     }, config.turnTimeoutMs);
   }
 
