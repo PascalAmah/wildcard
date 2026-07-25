@@ -28,6 +28,23 @@ export class RoomManager {
     return this.rooms.get(roomId);
   }
 
+  /**
+   * Look up a room by code, falling back to Redis rehydration if the room
+   * was evicted from the in-memory map (e.g. server restart).
+   */
+  async getOrRestoreRoom(roomId: string): Promise<Room | undefined> {
+    const existing = this.rooms.get(roomId);
+    if (existing) return existing;
+
+    const data = await this.store.getRoom(roomId);
+    if (!data) return undefined;
+
+    const room = Room.fromData(data, this.store, this.makeRoomBroadcast(roomId));
+    this.rooms.set(roomId, room);
+    room.onEmpty = () => this.removeEmptyRoom(roomId);
+    return room;
+  }
+
   /** Update the broadcast function after Socket.IO has been initialized. */
   setBroadcast(broadcast: RoomBroadcastFn): void {
     this.broadcast = broadcast;
@@ -97,15 +114,9 @@ export class RoomManager {
     playerId: string,
     playerName: string,
   ): Promise<Room> {
-    let room = this.rooms.get(roomId);
+    const room = await this.getOrRestoreRoom(roomId);
     if (!room) {
-      const data = await this.store.getRoom(roomId);
-      if (!data) {
-        throw makeError("ROOM_NOT_FOUND", "Room not found");
-      }
-      room = Room.fromData(data, this.store, this.makeRoomBroadcast(roomId));
-      this.rooms.set(roomId, room);
-      room.onEmpty = () => this.removeEmptyRoom(roomId);
+      throw makeError("ROOM_NOT_FOUND", "Room not found");
     }
 
     if (room.status !== "WAITING") {

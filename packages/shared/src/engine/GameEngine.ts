@@ -130,23 +130,32 @@ export class GameEngine {
    * Returns the drawn card so the caller can check legality
    * (e.g. via canPlay()) before deciding to play it.
    */
-  drawCard(playerId: string): Card {
+  drawCard(playerId: string): Card | null {
     const currentPlayer = this.state.players[this.state.currentPlayerIndex];
     if (currentPlayer.id !== playerId) {
       throw new Error("NOT_YOUR_TURN");
     }
 
-    const { card, drawPile: newDrawPile, discardPile: newDiscardPile } = drawFromPile(
-      this.state.drawPile,
-      this.state.discardPile,
-    );
-    this.state.drawPile = newDrawPile;
-    this.state.discardPile = newDiscardPile;
+    try {
+      const { card, drawPile: newDrawPile, discardPile: newDiscardPile } = drawFromPile(
+        this.state.drawPile,
+        this.state.discardPile,
+      );
+      this.state.drawPile = newDrawPile;
+      this.state.discardPile = newDiscardPile;
 
-    // Add drawn card to player's hand
-    this.state.hands[playerId].push(card);
+      // Add drawn card to player's hand
+      this.state.hands[playerId].push(card);
 
-    return card;
+      return card;
+    } catch (err) {
+      if ((err as Error).message === "DECK_EXHAUSTED") {
+        // Every card is in players' hands — nothing left to draw.
+        // The game will resolve naturally; just return null.
+        return null;
+      }
+      throw err;
+    }
   }
 
   /**
@@ -231,15 +240,19 @@ export class GameEngine {
     const currentPlayer = this.state.players[this.state.currentPlayerIndex];
     if (currentPlayer.id !== playerId) return;
 
-    // Auto-draw one card
-    const { card, drawPile: newDrawPile, discardPile: newDiscardPile } = drawFromPile(
-      this.state.drawPile,
-      this.state.discardPile,
-    );
-    this.state.drawPile = newDrawPile;
-    this.state.discardPile = newDiscardPile;
-
-    this.state.hands[playerId].push(card);
+    // Auto-draw one card (skip if deck is exhausted)
+    try {
+      const { card, drawPile: newDrawPile, discardPile: newDiscardPile } = drawFromPile(
+        this.state.drawPile,
+        this.state.discardPile,
+      );
+      this.state.drawPile = newDrawPile;
+      this.state.discardPile = newDiscardPile;
+      this.state.hands[playerId].push(card);
+    } catch (err) {
+      if ((err as Error).message !== "DECK_EXHAUSTED") throw err;
+      // Deck exhausted — advance turn without drawing
+    }
 
     // Always advance turn
     this.state.currentPlayerIndex = getNextPlayerIndex(
@@ -261,13 +274,18 @@ export class GameEngine {
         case "draw": {
           const targetHand = this.state.hands[this.state.players[step.targetPlayerIndex].id];
           for (let i = 0; i < step.count; i++) {
-            const { card, drawPile: newDrawPile, discardPile: newDiscardPile } = drawFromPile(
-              this.state.drawPile,
-              this.state.discardPile,
-            );
-            this.state.drawPile = newDrawPile;
-            this.state.discardPile = newDiscardPile;
-            targetHand.push(card);
+            try {
+              const { card, drawPile: newDrawPile, discardPile: newDiscardPile } = drawFromPile(
+                this.state.drawPile,
+                this.state.discardPile,
+              );
+              this.state.drawPile = newDrawPile;
+              this.state.discardPile = newDiscardPile;
+              targetHand.push(card);
+            } catch (err) {
+              if ((err as Error).message === "DECK_EXHAUSTED") break;
+              throw err;
+            }
           }
           break;
         }

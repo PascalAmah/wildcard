@@ -4,12 +4,29 @@ import type { CardColor, ErrorPayload } from "@wildcard/shared";
 import { emitToPlayer, type SocketData } from "../socketServer.js";
 import { logger } from "../../utils/logger.js";
 
+const RATE_LIMIT_MS = 500;
+const lastAction = new Map<string, number>();
+
+/** Reject if this socket sent a game action too recently. */
+function checkRateLimit(socketId: string): boolean {
+  const now = Date.now();
+  const last = lastAction.get(socketId) ?? 0;
+  if (now - last < RATE_LIMIT_MS) return false;
+  lastAction.set(socketId, now);
+  return true;
+}
+
 export function registerGameHandlers(
   io: SocketIOServer,
   socket: Socket,
   roomManager: RoomManager,
 ): void {
   socket.on("game:playCard", (payload, ack) => {
+    if (!checkRateLimit(socket.id)) {
+      ack?.({ success: false, code: "RATE_LIMITED" as any, error: "Too fast" });
+      return;
+    }
+
     const data = socket.data as SocketData;
     if (!data?.roomId) {
       ack?.({ success: false, code: "NOT_IN_ROOM", error: "Not in a room" });
@@ -61,6 +78,11 @@ export function registerGameHandlers(
   });
 
   socket.on("game:drawCard", (payload, ack) => {
+    if (!checkRateLimit(socket.id)) {
+      ack?.({ success: false, code: "RATE_LIMITED" as any, error: "Too fast" });
+      return;
+    }
+
     const data = socket.data as SocketData;
     if (!data?.roomId) {
       ack?.({ success: false, code: "NOT_IN_ROOM" });
@@ -92,6 +114,11 @@ export function registerGameHandlers(
   });
 
   socket.on("game:passTurn", (payload, ack) => {
+    if (!checkRateLimit(socket.id)) {
+      ack?.({ success: false, code: "RATE_LIMITED" as any, error: "Too fast" });
+      return;
+    }
+
     const data = socket.data as SocketData;
     if (!data?.roomId) {
       ack?.({ success: false, code: "NOT_IN_ROOM" });

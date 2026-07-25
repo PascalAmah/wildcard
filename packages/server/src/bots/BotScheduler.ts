@@ -3,7 +3,7 @@ import type { Room } from "../rooms/Room.js";
 import { logger } from "../utils/logger.js";
 
 /**
- * Schedules a bot's turn after a randomized 600–1200ms delay.
+ * Schedules a bot's turn after a randomized 1500–2500ms delay.
  * Calls chooseBotMove() then executes the move via the Room.
  *
  * The BotScheduler subscribes to each Room's onBotTurn callback
@@ -37,7 +37,7 @@ export class BotScheduler {
     const roomId = room.roomId;
     this.cancel(roomId);
 
-    const delay = 600 + Math.floor(Math.random() * 600); // 600–1200ms
+    const delay = 1500 + Math.floor(Math.random() * 1000); // 1500–2500ms
 
     const timer = setTimeout(() => {
       this.activeTimers.delete(roomId);

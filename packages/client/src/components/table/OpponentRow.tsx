@@ -1,3 +1,7 @@
+import { useRef } from "react";
+import gsap from "gsap";
+import { isReducedMotion } from "../../lib/gsapConfig";
+
 interface Opponent {
   id: string;
   name: string;
@@ -9,6 +13,8 @@ interface OpponentRowProps {
   players: Opponent[];
   currentPlayerIndex: number;
   myPlayerId: string;
+  /** When set, triggers a brief action animation on this player's avatar. */
+  actingPlayerId?: string | null;
 }
 
 const AVATAR_COLORS = ["#34c77b", "#ef5b68", "#f2b341", "#4c6ef5"];
@@ -17,9 +23,57 @@ export default function OpponentRow({
   players,
   currentPlayerIndex,
   myPlayerId,
+  actingPlayerId,
 }: OpponentRowProps) {
   const opponents = players.filter((p) => p.id !== myPlayerId);
   const currentPlayerId = players[currentPlayerIndex]?.id;
+  const avatarRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const prevHandCounts = useRef<Map<string, number>>(new Map());
+
+  // Trigger action animation when actingPlayerId changes
+  const prevActingId = useRef<string | null | undefined>(null);
+  if (actingPlayerId && actingPlayerId !== prevActingId.current && !isReducedMotion()) {
+    prevActingId.current = actingPlayerId;
+    // Schedule after paint so the DOM is ready
+    requestAnimationFrame(() => {
+      const el = avatarRefs.current.get(actingPlayerId);
+      if (el) {
+        gsap.fromTo(
+          el,
+          { scale: 1 },
+          { scale: 1.25, duration: 0.12, yoyo: true, repeat: 1, ease: "power2.out" },
+        );
+      }
+    });
+  }
+
+  // Animate hand count change for the acting player
+  if (actingPlayerId && !isReducedMotion()) {
+    const player = opponents.find((p) => p.id === actingPlayerId);
+    const prev = prevHandCounts.current.get(actingPlayerId);
+    if (player && prev !== undefined && prev !== player.handCount) {
+      const el = avatarRefs.current.get(actingPlayerId);
+      if (el) {
+        // Brief color flash on card count change
+        gsap.fromTo(
+          el,
+          { boxShadow: "0 0 0 0px rgba(76,110,245,0)" },
+          {
+            boxShadow: "0 0 0 8px rgba(76,110,245,0.3)",
+            duration: 0.3,
+            yoyo: true,
+            repeat: 1,
+            ease: "power2.out",
+          },
+        );
+      }
+    }
+  }
+
+  // Track current hand counts for next render
+  for (const p of opponents) {
+    prevHandCounts.current.set(p.id, p.handCount);
+  }
 
   if (opponents.length === 0) {
     return (
@@ -47,6 +101,9 @@ export default function OpponentRow({
             >
               {/* Avatar circle */}
               <div
+                ref={(el) => {
+                  if (el) avatarRefs.current.set(player.id, el);
+                }}
                 className={`w-[46px] h-[46px] rounded-full flex items-center justify-center font-[Fredoka] font-semibold text-[16px] transition-all duration-250 ${
                   isActive
                     ? "shadow-[0_0_0_4px_rgba(242,179,65,0.15)]"

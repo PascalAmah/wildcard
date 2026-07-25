@@ -17,6 +17,7 @@ import ReconnectOverlay from "../components/table/ReconnectOverlay";
 import Toast from "../components/shared/Toast";
 import type { ToastMessage } from "../components/shared/Toast";
 import { persistRoomCode, persistPlayerId } from "../lib/socketClient";
+import { usePing } from "../hooks/usePing";
 
 const ROUND_RESULT_KEY = "wildcard_round_result";
 
@@ -54,17 +55,39 @@ export default function TablePage() {
 
   // ----- Refs -----
   const discardPileRef = useRef<DiscardPileHandle>(null);
+  const drawPileRef = useRef<HTMLDivElement>(null);
 
   // ----- Local UI state -----
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [pendingWildCardId, setPendingWildCardId] = useState<string | null>(null);
+  const [actingPlayerId, setActingPlayerId] = useState<string | null>(null);
   const [disconnectedPlayer, setDisconnectedPlayer] = useState<{
     playerId: string;
     playerName: string;
     countdown: number;
   } | null>(null);
 
+  // Track last-played card ID so we can restore it on server rejection
+  const [rejectedCardId, setRejectedCardId] = useState<string | null>(null);
+  const lastPlayedCardIdRef = useRef<string | null>(null);
+
+  const { quality: pingQuality, latency: pingMs } = usePing();
+
+  // Turn pulse: bump key when isMyTurn changes → CSS animation re-triggers
+  const [turnKey, setTurnKey] = useState(0);
+  const isMyTurn = view
+    ? view.currentPlayerIndex === view.players.findIndex((p) => p.id === myPlayerId)
+    : false;
+  useEffect(() => {
+    setTurnKey((k) => k + 1);
+  }, [isMyTurn]);
+
   const toastCounter = useRef(0);
+  const myPlayerIdRef = useRef(myPlayerId);
+  myPlayerIdRef.current = myPlayerId;
+
+  // Clear actingPlayerId after animation completes
+  const actingTimerRef = useRef<ReturnType<typeof setTimeout>>();
 
   // ----- Socket event listeners -----
   useEffect(() => {
@@ -73,6 +96,13 @@ export default function TablePage() {
     function onGameEvent(event: GameEvent) {
       const id = `toast-${++toastCounter.current}`;
       setToasts((prev) => [...prev, { id, message: event.message, type: "info" as const }]);
+
+      // Trigger opponent action animation — skip for my own actions
+      if (event.actorId !== myPlayerIdRef.current) {
+        setActingPlayerId(event.actorId);
+        if (actingTimerRef.current) clearTimeout(actingTimerRef.current);
+        actingTimerRef.current = setTimeout(() => setActingPlayerId(null), 800);
+      }
     }
 
     function onError(err: { code: string; message: string }) {
@@ -81,6 +111,16 @@ export default function TablePage() {
         ...prev,
         { id, message: err.message || `Error: ${err.code}`, type: "error" as const },
       ]);
+
+      // If the server rejected a play we just attempted, restore the card
+      // that was dimmed by the optimistic fly-to-discard animation.
+      if (
+        (err.code === "NOT_YOUR_TURN" || err.code === "ILLEGAL_MOVE") &&
+        lastPlayedCardIdRef.current
+      ) {
+        setRejectedCardId(lastPlayedCardIdRef.current);
+        lastPlayedCardIdRef.current = null;
+      }
     }
 
     function onPlayerDisconnected(payload: DisconnectPayload) {
@@ -157,6 +197,8 @@ export default function TablePage() {
       return;
     }
 
+    lastPlayedCardIdRef.current = cardId;
+    setRejectedCardId(null);
     socket.emit("game:playCard", { roomId, cardId, chosenColor });
   }
 
@@ -167,6 +209,8 @@ export default function TablePage() {
 
     // Fly the card to discard pile, then emit
     executeFlyToDiscard(pendingWildCardId, targetEl, () => {
+      lastPlayedCardIdRef.current = pendingWildCardId;
+      setRejectedCardId(null);
       socket.emit("game:playCard", {
         roomId,
         cardId: pendingWildCardId,
@@ -361,8 +405,6 @@ export default function TablePage() {
 
   if (!view) return null;
 
-  const isMyTurn =
-    view.currentPlayerIndex === view.players.findIndex((p) => p.id === myPlayerId);
   const topCard = view.topCard;
   const discardCardEl = discardPileRef.current?.cardEl ?? null;
 
@@ -377,7 +419,7 @@ export default function TablePage() {
   return (
     <div
       ref={tableRef}
-      className="h-full flex flex-col items-center justify-between p-4 pb-8 relative overflow-hidden"
+      className="h-full flex flex-col items-center justify-between p-4 pb-8 relative overflow-x-hidden overflow-y-visible"
       style={{ background: "var(--bg)" }}
     >
       {/* Background glow */}
@@ -389,7 +431,18 @@ export default function TablePage() {
       {/* Top bar with room code and leave button */}
       <div className="relative z-10 w-full max-w-[800px] flex items-center justify-between">
         <div className="flex items-center gap-2 text-[13px] font-semibold text-[var(--ink-dim)]">
-          <span className="w-[6px] h-[6px] rounded-full bg-[var(--green)]" />
+          {/* Ping indicator */}
+          <span
+            className="w-[6px] h-[6px] rounded-full shrink-0"
+            style={{
+              background:
+                pingQuality === "good" ? "var(--green)"
+                : pingQuality === "ok" ? "var(--yellow)"
+                : pingQuality === "poor" ? "var(--red)"
+                : "var(--line)",
+            }}
+            title={pingMs != null ? `${pingMs}ms` : "Measuring…"}
+          />
           Table <b className="text-[var(--ink)]">{roomId}</b>
           <span className="text-[var(--line)] mx-1">·</span>
           {view.players.length} player{view.players.length !== 1 ? "s" : ""}
@@ -409,6 +462,7 @@ export default function TablePage() {
           players={view.players}
           currentPlayerIndex={view.currentPlayerIndex}
           myPlayerId={myPlayerId}
+          actingPlayerId={actingPlayerId}
         />
       </div>
 
@@ -416,6 +470,7 @@ export default function TablePage() {
       <div className="relative z-10 flex items-center gap-12">
         <DiscardPile ref={discardPileRef} topCard={topCard} activeColor={view.activeColor} />
         <DrawPile
+          ref={drawPileRef}
           drawPileCount={view.drawPileCount}
           onDraw={handleDraw}
           canDraw={isMyTurn}
@@ -425,11 +480,13 @@ export default function TablePage() {
       {/* Turn info and direction */}
       <div className="relative z-10 flex flex-col items-center gap-2">
         <span
+          key={turnKey}
           className={`text-[13px] font-bold px-5 py-1.5 rounded-full transition-all duration-300 ${
             isMyTurn
               ? "bg-[var(--accent)] text-white shadow-[0_0_14px_var(--accent)]"
               : "bg-[var(--panel-2)] text-[var(--ink-dim)] border border-[var(--line)]"
           }`}
+          style={{ animation: "turnPulse 0.4s ease-out" }}
         >
           {isMyTurn
             ? "Your turn"
@@ -450,6 +507,8 @@ export default function TablePage() {
           topCard={topCard}
           isMyTurn={isMyTurn}
           discardPileEl={discardCardEl}
+          drawPileEl={drawPileRef.current}
+          rejectedCardId={rejectedCardId}
           onIllegalPlay={() => {}}
           onToast={(msg) => {
             const id = `toast-${++toastCounter.current}`;
