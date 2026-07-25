@@ -70,6 +70,7 @@ export default function TablePage() {
   // Track last-played card ID so we can restore it on server rejection
   const [rejectedCardId, setRejectedCardId] = useState<string | null>(null);
   const lastPlayedCardIdRef = useRef<string | null>(null);
+  const isDrawingRef = useRef(false);
 
   const { quality: pingQuality, latency: pingMs } = usePing();
 
@@ -115,7 +116,7 @@ export default function TablePage() {
       // If the server rejected a play we just attempted, restore the card
       // that was dimmed by the optimistic fly-to-discard animation.
       if (
-        (err.code === "NOT_YOUR_TURN" || err.code === "ILLEGAL_MOVE") &&
+        (err.code === "NOT_YOUR_TURN" || err.code === "ILLEGAL_MOVE" || err.code === "RATE_LIMITED") &&
         lastPlayedCardIdRef.current
       ) {
         setRejectedCardId(lastPlayedCardIdRef.current);
@@ -187,8 +188,15 @@ export default function TablePage() {
     if (!roomId || !view) return;
 
     const card = view.myHand.find((c) => c.id === cardId);
+
+    // Guard: if the card disappeared from our hand between the fly animation
+    // and this emit (e.g. a timeout auto-drew and state updated), bail cleanly.
+    if (!card) {
+      lastPlayedCardIdRef.current = null;
+      return;
+    }
+
     if (
-      card &&
       (card.type === "WILD" || card.type === "WILD_DRAW_FOUR") &&
       card.color === null &&
       !chosenColor
@@ -221,8 +229,11 @@ export default function TablePage() {
   }
 
   function handleDraw() {
-    if (!roomId) return;
+    if (!roomId || isDrawingRef.current) return;
+    isDrawingRef.current = true;
     socket.emit("game:drawCard", { roomId });
+    // Reset after the server response window (rate limit is 500ms)
+    setTimeout(() => { isDrawingRef.current = false; }, 600);
   }
 
   // ---- Game actions ----

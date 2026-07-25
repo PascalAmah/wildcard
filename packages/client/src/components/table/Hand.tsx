@@ -48,6 +48,10 @@ function cardInlineStyle(
       ? "linear-gradient(135deg, #2b2f42, #33384f)"
       : cardGradient(card),
     transform: `rotate(${(idx - (total - 1) / 2) * 2}deg)`,
+    // Override any GSAP-injected inline opacity from a previous animation.
+    // React reuses DOM elements by key, so a dimmed card would stay faded
+    // unless we explicitly reset it on every render.
+    opacity: 1,
   };
 }
 
@@ -87,6 +91,8 @@ export default function Hand({
   const prevCardIds = useRef<Set<string>>(new Set());
   // Map card ID → its DOM element for the fly-out clone
   const cardEls = useRef<Map<string, HTMLElement>>(new Map());
+  // Prevent concurrent card plays during fly animation (380ms)
+  const isAnimatingRef = useRef(false);
 
   const registerCard = useCallback((id: string, el: HTMLElement | null) => {
     if (el) {
@@ -212,12 +218,17 @@ export default function Hand({
   // Restore a card's visibility when the server rejects the play.
   // The card was dimmed by the fly animation; rejection means no
   // game:state was sent, so the element is still in the DOM at 0.3 opacity.
+  // Use gsap.set (instant) rather than gsap.to — the DOM element is reused
+  // by React and a queued animation can be clobbered by layout shifts.
   useEffect(() => {
     if (!rejectedCardId || isReducedMotion()) return;
     const el = cardEls.current.get(rejectedCardId);
     if (el) {
-      gsap.to(el, { opacity: 1, scale: 1, duration: 0.2, ease: "power2.out" });
+      gsap.set(el, { clearProps: "opacity,scale" });
     }
+    // Safety: clear the animation guard in case the fly callback
+    // didn't fire (edge case with rapid state updates).
+    isAnimatingRef.current = false;
   }, [rejectedCardId]);
 
   // ---- Fly-to-discard animation ----
@@ -298,6 +309,9 @@ export default function Hand({
   // ---- Card click handler ----
   function handleCardClick(card: Card) {
     if (!isMyTurn) return;
+    // Block concurrent card plays during the fly animation.
+    // Prevents double-clicks and rapid multi-card taps.
+    if (isAnimatingRef.current) return;
 
     const legal = canPlay(card, topCard, activeColor);
 
@@ -334,7 +348,9 @@ export default function Hand({
     }
 
     // Legal non-wild (or wild with pre-selected color): fly → emit
+    isAnimatingRef.current = true;
     flyCardToDiscardPile(card.id, () => {
+      isAnimatingRef.current = false;
       hapticPlay();
       onPlayCard(card.id);
     });
@@ -374,12 +390,13 @@ export default function Hand({
               return (
                 <div
                   key={card.id}
-                  className={`flex-shrink-0 transition-transform duration-200 ease-out ${
-                    isClickable
-                      ? "-translate-y-3.5 hover:-translate-y-[28px] hover:z-10"
-                      : ""
-                  }`}
-                  style={{ marginLeft: idx === 0 ? "0" : "-14px", zIndex: idx }}
+                  className="flex-shrink-0"
+                  style={{
+                    marginLeft: idx === 0 ? "0" : "-14px",
+                    zIndex: idx,
+                    transform: isClickable ? "translateY(-14px)" : "none",
+                    transition: "transform 200ms ease-out",
+                  }}
                 >
                 <div
                   ref={(el) => registerCard(card.id, el)}

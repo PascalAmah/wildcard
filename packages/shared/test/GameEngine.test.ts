@@ -108,7 +108,7 @@ describe("GameEngine", () => {
         }
 
         const wildCard = hand.find(
-          (c) => c.type === "WILD" || c.type === "WILD_DRAW_FOUR",
+          (c) => c.type === "WILD", // WILD_DRAW_FOUR also skips in 2p
         );
         if (wildCard) {
           cardId = wildCard.id;
