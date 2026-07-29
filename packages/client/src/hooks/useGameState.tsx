@@ -76,12 +76,16 @@ function reducer(state: AppState, action: Action): AppState {
         myPlayerId: action.myPlayerId,
       };
     }
-    case "GAME_STATE":
+    case "GAME_STATE": {
+      if (state.screen === "roundOver" && action.view.status !== "IN_PROGRESS") {
+        return state;
+      }
       return {
         screen: "playing",
         view: action.view as GameView,
         myPlayerId: action.myPlayerId,
       };
+    }
     case "ROUND_OVER":
       return {
         screen: "roundOver",

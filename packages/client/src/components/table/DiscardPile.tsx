@@ -76,6 +76,9 @@ const DiscardPile = forwardRef<DiscardPileHandle, DiscardPileProps>(
             className="w-full h-full rounded-xl border-2 border-dashed border-[var(--line)]"
             ref={cardRef}
           />
+          <span className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-[12px] font-semibold text-[var(--ink-dim)] whitespace-nowrap">
+            Discard
+          </span>
         </div>
       );
     }
@@ -120,6 +123,10 @@ const DiscardPile = forwardRef<DiscardPileHandle, DiscardPileProps>(
             </span>
           )}
         </div>
+
+        <span className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-[12px] font-semibold text-[var(--ink-dim)] whitespace-nowrap">
+          Discard
+        </span>
       </div>
     );
   },

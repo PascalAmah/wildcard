@@ -100,11 +100,11 @@ export class GameEngine {
     this.state.activeColor = newActiveColor;
 
     // Process the effect queue
-    const prevIndex = this.state.currentPlayerIndex;
+    const didSkip = effectQueue.hasSkipStep();
     this.processEffectQueue(effectQueue);
 
-    // If the effect queue didn't advance the turn (no skip/draw+skip), advance normally
-    if (this.state.currentPlayerIndex === prevIndex) {
+    // If the effect queue didn't contain a skip step, advance to the next player
+    if (!didSkip) {
       this.state.currentPlayerIndex = getNextPlayerIndex(
         this.state.currentPlayerIndex,
         this.state.direction,
@@ -130,23 +130,32 @@ export class GameEngine {
    * Returns the drawn card so the caller can check legality
    * (e.g. via canPlay()) before deciding to play it.
    */
-  drawCard(playerId: string): Card {
+  drawCard(playerId: string): Card | null {
     const currentPlayer = this.state.players[this.state.currentPlayerIndex];
     if (currentPlayer.id !== playerId) {
       throw new Error("NOT_YOUR_TURN");
     }
 
-    const { card, drawPile: newDrawPile, discardPile: newDiscardPile } = drawFromPile(
-      this.state.drawPile,
-      this.state.discardPile,
-    );
-    this.state.drawPile = newDrawPile;
-    this.state.discardPile = newDiscardPile;
+    try {
+      const { card, drawPile: newDrawPile, discardPile: newDiscardPile } = drawFromPile(
+        this.state.drawPile,
+        this.state.discardPile,
+      );
+      this.state.drawPile = newDrawPile;
+      this.state.discardPile = newDiscardPile;
 
-    // Add drawn card to player's hand
-    this.state.hands[playerId].push(card);
+      // Add drawn card to player's hand
+      this.state.hands[playerId].push(card);
 
-    return card;
+      return card;
+    } catch (err) {
+      if ((err as Error).message === "DECK_EXHAUSTED") {
+        // Every card is in players' hands — nothing left to draw.
+        // The game will resolve naturally; just return null.
+        return null;
+      }
+      throw err;
+    }
   }
 
   /**
@@ -168,6 +177,58 @@ export class GameEngine {
   }
 
   /**
+   * Restore the engine's full internal state from a previously serialized
+   * GameState (e.g. after a server restart and Redis rehydration).
+   *
+   * Uses a JSON round-trip for a proper deep copy, matching exactly how
+   * the state was serialized through the Redis store. This is safer than
+   * Object.assign because it won't share references with the persisted
+   * object and handles any future nested fields correctly.
+   */
+  restoreState(state: GameState): void {
+    this.state = JSON.parse(JSON.stringify(state));
+  }
+
+  /**
+   * Remove a player from the game mid-round.
+   * Deletes their hand, removes them from the player list, and adjusts
+   * currentPlayerIndex. If only one player remains, the round ends
+   * with that player as the winner.
+   *
+   * Returns a RoundOverResult if the round ends, or null if play continues.
+   */
+  removePlayer(playerId: string): RoundOverResult | null {
+    const removedIndex = this.state.players.findIndex((p) => p.id === playerId);
+    if (removedIndex === -1) return null;
+
+    // Delete their hand
+    delete this.state.hands[playerId];
+
+    // Remove from players list
+    this.state.players.splice(removedIndex, 1);
+
+    // Adjust currentPlayerIndex if it pointed past the removed player
+    if (this.state.currentPlayerIndex > removedIndex) {
+      this.state.currentPlayerIndex--;
+    } else if (this.state.currentPlayerIndex === removedIndex) {
+      // The removed player was the current player — wrap to the next player
+      if (this.state.currentPlayerIndex >= this.state.players.length) {
+        this.state.currentPlayerIndex = 0;
+      }
+    }
+
+    // If only one player remains, they win
+    if (this.state.players.length <= 1) {
+      const winnerId = this.state.players[0]?.id;
+      if (winnerId) {
+        return this.checkRoundOver(winnerId);
+      }
+    }
+
+    return null;
+  }
+
+  /**
    * Handle a turn timeout: auto-draw one card and always end the turn.
    * Never auto-plays, even if the drawn card is legal.
    *
@@ -179,15 +240,19 @@ export class GameEngine {
     const currentPlayer = this.state.players[this.state.currentPlayerIndex];
     if (currentPlayer.id !== playerId) return;
 
-    // Auto-draw one card
-    const { card, drawPile: newDrawPile, discardPile: newDiscardPile } = drawFromPile(
-      this.state.drawPile,
-      this.state.discardPile,
-    );
-    this.state.drawPile = newDrawPile;
-    this.state.discardPile = newDiscardPile;
-
-    this.state.hands[playerId].push(card);
+    // Auto-draw one card (skip if deck is exhausted)
+    try {
+      const { card, drawPile: newDrawPile, discardPile: newDiscardPile } = drawFromPile(
+        this.state.drawPile,
+        this.state.discardPile,
+      );
+      this.state.drawPile = newDrawPile;
+      this.state.discardPile = newDiscardPile;
+      this.state.hands[playerId].push(card);
+    } catch (err) {
+      if ((err as Error).message !== "DECK_EXHAUSTED") throw err;
+      // Deck exhausted — advance turn without drawing
+    }
 
     // Always advance turn
     this.state.currentPlayerIndex = getNextPlayerIndex(
@@ -209,13 +274,18 @@ export class GameEngine {
         case "draw": {
           const targetHand = this.state.hands[this.state.players[step.targetPlayerIndex].id];
           for (let i = 0; i < step.count; i++) {
-            const { card, drawPile: newDrawPile, discardPile: newDiscardPile } = drawFromPile(
-              this.state.drawPile,
-              this.state.discardPile,
-            );
-            this.state.drawPile = newDrawPile;
-            this.state.discardPile = newDiscardPile;
-            targetHand.push(card);
+            try {
+              const { card, drawPile: newDrawPile, discardPile: newDiscardPile } = drawFromPile(
+                this.state.drawPile,
+                this.state.discardPile,
+              );
+              this.state.drawPile = newDrawPile;
+              this.state.discardPile = newDiscardPile;
+              targetHand.push(card);
+            } catch (err) {
+              if ((err as Error).message === "DECK_EXHAUSTED") break;
+              throw err;
+            }
           }
           break;
         }

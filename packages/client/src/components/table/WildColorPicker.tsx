@@ -5,6 +5,7 @@ import type { CardColor } from "@wildcard/shared";
 
 interface WildColorPickerProps {
   onChooseColor: (color: CardColor) => void;
+  onCancel: () => void;
 }
 
 const COLORS: Array<{ color: CardColor; hex: string; hexDark: string }> = [
@@ -14,7 +15,7 @@ const COLORS: Array<{ color: CardColor; hex: string; hexDark: string }> = [
   { color: "blue", hex: "#4c6ef5", hexDark: "#3450d1" },
 ];
 
-export default function WildColorPicker({ onChooseColor }: WildColorPickerProps) {
+export default function WildColorPicker({ onChooseColor, onCancel }: WildColorPickerProps) {
   const scrimRef = useRef<HTMLDivElement>(null);
   const modalRef = useRef<HTMLDivElement>(null);
 
@@ -70,16 +71,18 @@ export default function WildColorPicker({ onChooseColor }: WildColorPickerProps)
     <div
       ref={scrimRef}
       className="fixed inset-0 z-40 flex items-center justify-center bg-black/60"
+      onClick={onCancel}
     >
       <div
         ref={modalRef}
         className="bg-[var(--panel)] border border-[var(--line)] rounded-2xl p-6 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
       >
         <h2 className="text-[16px] font-bold font-[Fredoka] text-[var(--ink)] text-center mb-4">
           Choose a color
         </h2>
 
-        <div className="flex gap-3">
+        <div className="flex gap-3 mb-5">
           {COLORS.map(({ color, hex, hexDark }) => (
             <button
               key={color}
@@ -92,6 +95,13 @@ export default function WildColorPicker({ onChooseColor }: WildColorPickerProps)
             />
           ))}
         </div>
+
+        <button
+          onClick={onCancel}
+          className="w-full py-2 rounded-xl text-[13px] font-semibold text-[var(--ink-dim)] bg-transparent border border-[var(--line)] cursor-pointer hover:text-[var(--ink)] hover:border-[var(--ink-dim)] transition-colors duration-200"
+        >
+          Cancel
+        </button>
       </div>
     </div>
   );

@@ -1,5 +1,5 @@
-import type { Card, CardColor, GameState } from "../types.js";
-import { EffectQueue, type EffectStep } from "./effectQueue.js";
+import type { Card, CardColor } from "../types.js";
+import { EffectQueue } from "./effectQueue.js";
 import { getNextPlayerIndex, getSkippedPlayerIndex } from "./turnOrder.js";
 
 /**

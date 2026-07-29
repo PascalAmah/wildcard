@@ -75,8 +75,9 @@ export function registerRoomHandlers(
   socket.on("room:rejoin", async (payload, ack) => {
     try {
       const { roomCode, playerId } = payload;
-      // Rejoin an existing game: look up the room, verify the player is in it
-      const room = roomManager.getRoom(roomCode);
+      // Rejoin an existing game: look up the room (with Redis fallback),
+      // verify the player is still in it.
+      const room = await roomManager.getOrRestoreRoom(roomCode);
       if (!room) {
         ack?.({ success: false, code: "ROOM_NOT_FOUND", error: "Room not found" });
         return;
@@ -102,11 +103,18 @@ export function registerRoomHandlers(
 
       ack?.({ success: true, roomId: room.roomId, status: room.status });
 
-      if (room.status === "WAITING") {
-        broadcastLobbyState(io, room.roomId, room);
-      } else {
-        // Send the per-player game state to the rejoined player
-        room.sendGameStateToPlayer(playerId);
+      // Always send lobby state so the rejoined player knows the host ID
+      // and player roster. This is critical for the scoreboard page where
+      // the rematch button depends on knowing who the host is.
+      broadcastLobbyState(io, room.roomId, room);
+
+      if (room.status !== "WAITING") {
+        // Emit game state directly on this socket. Using emitToPlayer here
+        // risks missing the socket if it hasn't fully joined the room yet.
+        const view = room.getClientView(playerId);
+        if (view) {
+          socket.emit("game:state", view);
+        }
       }
 
       // Notify other players that this player reconnected
@@ -241,17 +249,55 @@ export function registerRoomHandlers(
     const player = room.players.find((p) => p.id === data.playerId);
     if (!player) return;
 
-    // Notify the room that this player disconnected, with a 60s grace-period countdown
+    // Notify the room with a 30s grace-period countdown
     io.to(data.roomId).emit("player:disconnected", {
       playerId: data.playerId,
       playerName: player.name,
-      countdown: 60,
+      countdown: 30,
     });
 
     // Start the server-side auto-removal timer
     room.startDisconnectTimer(data.playerId);
 
-    logger.info(`Player ${player.name} disconnected from room ${data.roomId} — 60s grace period started`);
+    logger.info(`Player ${player.name} disconnected from room ${data.roomId} — 30s grace period started`);
+  });
+
+  socket.on("room:leave", () => {
+    const data = socket.data as SocketData;
+    if (!data?.roomId) return;
+
+    const room = roomManager.getRoom(data.roomId);
+    if (!room) return;
+
+    const playerId = data.playerId;
+    const player = room.players.find((p) => p.id === playerId);
+    if (!player) return;
+
+    logger.info(`Player ${player.name} voluntarily left room ${data.roomId}`);
+
+    // Remove the player immediately based on room status
+    if (room.status === "IN_PROGRESS") {
+      room.playWithout(playerId);
+    } else {
+      room.removePlayer(playerId);
+    }
+
+    // If the room is empty, clean it up
+    if (room.players.length === 0) {
+      roomManager.removeEmptyRoom(room.roomId);
+    } else {
+      // Broadcast updated lobby state
+      broadcastLobbyState(io, room.roomId, room);
+
+      io.to(data.roomId).emit("player:reconnected", {
+        playerId,
+        playerName: player.name,
+        removed: true,
+      });
+    }
+
+    // Clear disconnect timer if any (they left intentionally)
+    room.clearDisconnectTimer(playerId);
   });
 
   socket.on("room:requestState", () => {
@@ -274,12 +320,13 @@ export function registerRoomHandlers(
 function broadcastLobbyState(
   io: SocketIOServer,
   roomId: string,
-  room: { players: unknown[]; hostId: string; maxPlayers: number; theme: string },
+  room: { players: unknown[]; hostId: string; maxPlayers: number; theme: string; status: string },
 ): void {
   io.to(roomId).emit("room:state", {
     players: room.players,
     hostId: room.hostId,
     maxPlayers: room.maxPlayers,
     theme: room.theme,
+    status: room.status,
   });
 }

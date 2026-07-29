@@ -87,9 +87,9 @@ export default function LobbyPage() {
 
         {/* Three panels */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          <SoloVsComputerForm onGameStarted={handleSoloStarted} />
           <CreateTableForm onCreated={handleCreated} />
           <JoinTableForm onJoined={handleJoined} />
-          <SoloVsComputerForm onGameStarted={handleSoloStarted} />
         </div>
       </div>
 

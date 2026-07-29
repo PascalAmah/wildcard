@@ -40,7 +40,7 @@ async function main(): Promise<void> {
     }
   };
 
-  const roomManager = new RoomManager(broadcast);
+  const roomManager = new RoomManager(broadcast, botScheduler);
 
   // ---- Attach Socket.IO ----
   ioRef.current = createSocketServer(app.server, roomManager, botScheduler);

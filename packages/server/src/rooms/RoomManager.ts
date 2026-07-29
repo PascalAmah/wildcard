@@ -3,6 +3,7 @@ import { Room, type BroadcastFn } from "./Room.js";
 import { RoomStore } from "../store/roomStore.js";
 import { generateRoomCode } from "../utils/roomCode.js";
 import { logger } from "../utils/logger.js";
+import type { BotScheduler } from "../bots/BotScheduler.js";
 
 export type RoomBroadcastFn = (
   roomId: string,
@@ -15,14 +16,33 @@ export class RoomManager {
   private rooms: Map<string, Room> = new Map();
   private store: RoomStore;
   private broadcast: RoomBroadcastFn;
+  private botScheduler: BotScheduler | null;
 
-  constructor(broadcast: RoomBroadcastFn) {
+  constructor(broadcast: RoomBroadcastFn, botScheduler?: BotScheduler) {
     this.store = new RoomStore();
     this.broadcast = broadcast;
+    this.botScheduler = botScheduler ?? null;
   }
 
   getRoom(roomId: string): Room | undefined {
     return this.rooms.get(roomId);
+  }
+
+  /**
+   * Look up a room by code, falling back to Redis rehydration if the room
+   * was evicted from the in-memory map (e.g. server restart).
+   */
+  async getOrRestoreRoom(roomId: string): Promise<Room | undefined> {
+    const existing = this.rooms.get(roomId);
+    if (existing) return existing;
+
+    const data = await this.store.getRoom(roomId);
+    if (!data) return undefined;
+
+    const room = Room.fromData(data, this.store, this.makeRoomBroadcast(roomId));
+    this.rooms.set(roomId, room);
+    room.onEmpty = () => this.removeEmptyRoom(roomId);
+    return room;
   }
 
   /** Update the broadcast function after Socket.IO has been initialized. */
@@ -67,6 +87,8 @@ export class RoomManager {
     );
 
     this.rooms.set(roomId, room);
+    room.onEmpty = () => this.removeEmptyRoom(roomId);
+
     await this.store.setRoom({
       roomId,
       status: "WAITING",
@@ -92,14 +114,9 @@ export class RoomManager {
     playerId: string,
     playerName: string,
   ): Promise<Room> {
-    let room = this.rooms.get(roomId);
+    const room = await this.getOrRestoreRoom(roomId);
     if (!room) {
-      const data = await this.store.getRoom(roomId);
-      if (!data) {
-        throw makeError("ROOM_NOT_FOUND", "Room not found");
-      }
-      room = Room.fromData(data, this.store, this.makeRoomBroadcast(roomId));
-      this.rooms.set(roomId, room);
+      throw makeError("ROOM_NOT_FOUND", "Room not found");
     }
 
     if (room.status !== "WAITING") {
@@ -121,16 +138,24 @@ export class RoomManager {
     if (!room) return;
 
     room.removePlayer(playerId);
+    // If the room is now empty, onEmpty → removeEmptyRoom handles
+    // cleanup (map removal, bot detach, store deletion).
+  }
 
-    if (room.players.length === 0) {
-      this.rooms.delete(roomId);
-      this.store.deleteRoom(roomId).catch(() => {});
-      logger.info(`Room ${roomId} deleted (empty)`);
-    }
+  /** Delete an empty room. Safe to call on non-empty rooms (no-op). */
+  removeEmptyRoom(roomId: string): void {
+    const room = this.rooms.get(roomId);
+    if (!room) return;
+    if (room.players.length > 0) return;
+    this.rooms.delete(roomId);
+    this.botScheduler?.detach(roomId);
+    this.store.deleteRoom(roomId).catch(() => {});
+    logger.info(`Room ${roomId} dissolved (empty)`);
   }
 
   async deleteRoom(roomId: string): Promise<void> {
     this.rooms.delete(roomId);
+    this.botScheduler?.detach(roomId);
     await this.store.deleteRoom(roomId);
   }
 }
